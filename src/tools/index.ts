@@ -1,3 +1,3 @@
-import { readStock, searchProducts } from "./products/index.js";
+import { productsTools } from "./products/index.js";
 
-export const tools = [readStock, searchProducts];
+export const tools = [...productsTools];

@@ -1,2 +1,4 @@
-export { readStock } from "./stock.js";
-export { searchProducts } from "./search.js";
+import { readStockBySku } from "./stock.js";
+import { resolveProduct } from "./resolve.js";
+
+export const productsTools = [resolveProduct, readStockBySku];
