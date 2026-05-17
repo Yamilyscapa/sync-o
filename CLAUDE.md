@@ -34,7 +34,24 @@ Supabase client (`src/supabase.ts`) is server-side and uses the **service-role k
 
 - TypeScript strict, `module: NodeNext`, `target: ES2022`, `rootDir: src`, `outDir: dist`.
 - Use `.js` suffix on relative imports (NodeNext ESM requirement).
-- Validate all external input (HTTP bodies, env) with Zod.
+- **Zod is mandatory at every I/O boundary.** This includes HTTP request bodies, env vars, external API responses, and **every DB row returned from Supabase/PostgREST**. Define `XxxSchema = z.object({...})` next to its `type Xxx = z.infer<typeof XxxSchema>`; never hand-write the type. Parse before returning from `src/db/<entity>/{reads,writes}.ts`. Use `z.coerce.number()` for numeric DB columns (PostgREST returns them as strings). Do not `as Foo` cast DB results — Supabase client types are not authoritative.
+- Layer separation: `src/db/<entity>/` holds pure DB functions (with Zod parsing); `src/tools/<entity>/` holds thin LLM-facing tool wrappers that call the db layer.
+
+## Commit convention
+
+Conventional Commits: `type(scope): message`.
+
+- Allowed types: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `build`, `ci`, `style`, `revert`.
+- `scope` is a short noun for the area touched: `db`, `products`, `agent`, `auth`, `tools`, `server`, `env`, `migrations`, etc. Omit only when truly global.
+- Subject: imperative, lowercase, no trailing period, ≤72 chars.
+- Breaking change: append `!` after scope, e.g. `refactor(db)!: drop legacy column`.
+- Body (optional): explain *why*, not *what*. Wrap at 72 cols.
+
+Examples:
+- `feat(products): add searchProducts tool`
+- `fix(auth): reject expired tokens before db call`
+- `chore(migrations): rename anon key env var`
+- `refactor(tools)!: split db layer from tool wrappers`
 
 ## Agent Skills
 
