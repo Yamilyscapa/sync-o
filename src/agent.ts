@@ -122,25 +122,64 @@ const ctx: AgentContext = {
 
 // Single-turn = string. Multi-turn = string[] (subsequent strings are user replies
 // threaded as conversation history, used to exercise clarification flows).
+//
+// Scenario order matters: the first few prompts SEED state (create supplier,
+// link to SKU, first intake with cost) so later scenarios can exercise the
+// "recurring intake/sale defaults from snapshot" path. Each scenario is its
+// own conversation (fresh agent), but DB state persists across them.
 const prompts: Array<string | string[]> = [
+  // --- Setup phase: prime supplier + link + first-cost snapshot ---
+  // Idempotent: create-supplier may fail on duplicate_name on repeat runs;
+  // the agent surfaces the duplicate error and the rest of the suite still runs.
+  "Da de alta al proveedor Ferretería del Norte, lead time 5 días.",
+  "Vincula Ferretería del Norte con IND-001.",
+  "Ingresaron 100 tornillos de Ferretería del Norte a 12.50 cada uno.",
+
+  // --- Read sanity ---
   "What is the stock of IND-001?",
-  "Ingresaron 50 tornillos al almacén.",
+
+  // --- Intake without explicit supplier: agent must ASK (single-turn fails;
+  // multi-turn so we can observe the clarification + completion). ---
+  ["Ingresaron 50 tornillos al almacén.", "De Ferretería del Norte."],
+
+  // --- Sale into a SKU that exists but has zero stock — must surface negative_stock. ---
   "Vendí 3 taladros.",
-  // Ambiguous outflow — agent should ask first; harness replies "dale" → uses default `sale`.
+
+  // --- Ambiguous outflow verbs ---
   ["Saca 10 tornillos.", "Dale, registralo."],
-  // Ambiguous outflow where the user supplies the reason on follow-up.
   ["Quita 5 tornillos del inventario.", "Es por merma."],
+
+  // --- Read tools ---
   "Muestra el historial de IND-001.",
   "Ajusta el stock de aceite de oliva: el conteo físico dio 55.",
   "¿Qué movimientos hubo recientemente?",
-  // Reversal flow: register wrong intake, then undo it.
-  ["Ingresaron 200 tornillos al almacén.", "Espera, fue un error. Deshaz ese último ingreso."],
-  // User says "borra" — agent must redirect to reversal (append-only ledger).
-  ["Ingresaron 7 tornillos.", "Borra ese último ingreso, fue equivocado."],
-  // Distinguish reversal from correction: legitimate sale followed by a new sale, not a reversal.
+
+  // --- Reversal flow: register intake, then undo it. Supplier named inline. ---
+  [
+    "Ingresaron 200 tornillos al almacén de Ferretería del Norte.",
+    "Espera, fue un error. Deshaz ese último ingreso.",
+  ],
+  // --- "borra" must redirect to reversal (append-only ledger). ---
+  [
+    "Ingresaron 7 tornillos de Ferretería del Norte.",
+    "Borra ese último ingreso, fue equivocado.",
+  ],
+  // --- Distinguish reversal from correction: legit sale + follow-up sale, not a reversal. ---
   ["Vendí 2 tornillos.", "Ah no, fueron 4 los que vendí, registra los 2 que faltan."],
-  // Idempotency: double reversal must fail with "ya fue reversado".
+  // --- Idempotency: double reversal must fail with "ya fue reversado". ---
   ["Vendí 1 tornillo.", "Reversa ese movimiento.", "Reversa otra vez ese movimiento."],
+
+  // --- Pricing-default exercises (depend on setup above) ---
+  // Recurring intake — agent should not ask for cost in chat; HITL preview shows defaulted value.
+  "Ingresaron 50 tornillos más de Ferretería del Norte.",
+  // Recurring sale — agent should not ask for price in chat.
+  "Vendí 3 tornillos.",
+  // Explicit price override (pesos → cents: 110 pesos = 11000 cents).
+  "Véndelo a 110 pesos cada uno, fueron 2 tornillos.",
+
+  // --- Supplier read tools ---
+  "¿Quién me surte tornillos?",
+  "Marca a Ferretería del Norte como preferido para IND-001.",
 ];
 
 async function drainApprovals(
