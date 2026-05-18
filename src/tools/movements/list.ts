@@ -9,6 +9,7 @@ import { MovementReasonSchema } from "../../db/movements/schema.js";
 import { SKU_REGEX_DESC } from "../../db/products/sku.js";
 import { getSupabaseFromContext } from "../../supabase.js";
 import { guardSku } from "../_guards.js";
+import { projectMovement } from "./_project.js";
 
 export const listStockMovements = tool({
   name: "listStockMovements",
@@ -37,7 +38,7 @@ export const listStockMovements = tool({
         reason: reason ?? undefined,
         sinceIso: sinceIso ?? undefined,
       });
-      return JSON.stringify({ rows });
+      return JSON.stringify({ rows: rows.map(projectMovement) });
     } catch (e) {
       return `error: ${(e as Error).message}`;
     }
@@ -71,7 +72,7 @@ export const getStockHistory = tool({
         sku,
         limit,
       );
-      return JSON.stringify({ rows });
+      return JSON.stringify({ rows: rows.map(projectMovement) });
     } catch (e) {
       return `error: ${(e as Error).message}`;
     }

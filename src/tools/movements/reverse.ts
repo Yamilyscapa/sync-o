@@ -4,6 +4,7 @@ import type { AgentContext } from "../../agent.js";
 import { reverseMovement } from "../../db/movements/reverse.js";
 import { getSupabaseFromContext } from "../../supabase.js";
 import { guardUuid } from "../_guards.js";
+import { REASON_ES } from "./_project.js";
 
 export const reverseStockMovement = tool({
   name: "reverseStockMovement",
@@ -65,7 +66,7 @@ export const reverseStockMovement = tool({
       const { reversal, original } = result;
       const origSign = original.delta > 0 ? "+" : "";
       const revSign = reversal.delta > 0 ? "+" : "";
-      return `reversa registrada: ${original.sku} movimiento original ${origSign}${original.delta} (${original.reason}, id=${original.id}) anulado con ${revSign}${reversal.delta} (id=${reversal.id})`;
+      return `reversa registrada: ${original.sku} movimiento original ${origSign}${original.delta} (${REASON_ES[original.reason]}, id=${original.id}) anulado con ${revSign}${reversal.delta} (id=${reversal.id})`;
     } catch (e) {
       return `error: ${(e as Error).message}`;
     }

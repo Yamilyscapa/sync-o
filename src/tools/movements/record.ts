@@ -6,6 +6,7 @@ import { recordMovement } from "../../db/movements/writes.js";
 import { SKU_REGEX_DESC } from "../../db/products/sku.js";
 import { getSupabaseFromContext } from "../../supabase.js";
 import { guardSku, guardUuid } from "../_guards.js";
+import { REASON_ES } from "./_project.js";
 
 export const recordStockMovement = tool({
   name: "recordStockMovement",
@@ -114,7 +115,7 @@ export const recordStockMovement = tool({
 
       const r = result.row;
       const sign = r.delta > 0 ? "+" : "";
-      return `movimiento registrado: ${r.sku} ${sign}${r.delta} (${r.reason}) — id=${r.id}`;
+      return `movimiento registrado: ${r.sku} ${sign}${r.delta} (${REASON_ES[r.reason]}) — id=${r.id}`;
     } catch (e) {
       return `error: ${(e as Error).message}`;
     }
