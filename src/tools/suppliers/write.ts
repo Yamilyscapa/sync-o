@@ -1,7 +1,7 @@
 import { tool } from "@openai/agents";
 import { z } from "zod";
 import type { AgentContext } from "../../agent.js";
-import { SKU_REGEX, SKU_REGEX_DESC } from "../../db/products/sku.js";
+import { SKU_REGEX_DESC } from "../../db/products/sku.js";
 import type { SupplierWriteError } from "../../db/suppliers/schema.js";
 import {
   createSupplier,
@@ -12,6 +12,12 @@ import {
   updateSupplier,
 } from "../../db/suppliers/writes.js";
 import { getSupabaseFromContext } from "../../supabase.js";
+import { guardSku, guardUuid } from "../_guards.js";
+
+const SKU_PARAM_DESC = `${SKU_REGEX_DESC}. MUST be a canonical SKU — if the user referenced the product by name, call resolveProduct FIRST.`;
+const SUPPLIER_ID_DESC =
+  "Supplier UUID. If the user gave a name, call resolveSupplier FIRST and use the returned candidates[0].id.";
+const SUPPLIER_RESOLVER_HINT = `resolveSupplier({ query: "<name>" })`;
 
 function translateSupplierError(e: SupplierWriteError): string {
   switch (e.kind) {
@@ -104,7 +110,7 @@ export const updateSupplierTool = tool({
   description:
     "Update fields on an existing supplier. Provide ONLY the fields the user asked to change; omit the rest. Human-in-the-loop.",
   parameters: z.object({
-    supplierId: z.string().uuid().describe("Supplier UUID"),
+    supplierId: z.string().describe(SUPPLIER_ID_DESC),
     name: z.string().nullable().describe("New display name, or null to leave unchanged"),
     legal_name: z.string().nullable().describe("New legal name, or null to leave unchanged"),
     tax_id: z.string().nullable().describe("New tax id, or null to leave unchanged"),
@@ -130,6 +136,9 @@ export const updateSupplierTool = tool({
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const idErr = guardUuid(args.supplierId, "supplierId", SUPPLIER_RESOLVER_HINT);
+    if (idErr) return idErr;
 
     const patch: Record<string, unknown> = {};
     if (args.name != null) patch.name = args.name;
@@ -166,12 +175,16 @@ export const deactivateSupplierTool = tool({
   description:
     "Soft-delete a supplier by setting is_active=false. The supplier is hidden from default lists but historical movements and product links are preserved. Prefer this over hard deletion. Human-in-the-loop.",
   parameters: z.object({
-    supplierId: z.string().uuid().describe("Supplier UUID to deactivate"),
+    supplierId: z.string().describe(SUPPLIER_ID_DESC),
   }),
   execute: async ({ supplierId }, runContext) => {
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const idErr = guardUuid(supplierId, "supplierId", SUPPLIER_RESOLVER_HINT);
+    if (idErr) return idErr;
+
     try {
       const result = await deactivateSupplier(
         getSupabaseFromContext(ctx),
@@ -192,11 +205,8 @@ export const linkProductSupplierTool = tool({
   description:
     "Create a link between a product (SKU) and a supplier (UUID), capturing per-link economics (supplier's own SKU code, lead time override, min order qty, preferred flag). Human-in-the-loop. Resolve supplier by name via `resolveSupplier` BEFORE calling this; never invent UUIDs.",
   parameters: z.object({
-    sku: z
-      .string()
-      .regex(SKU_REGEX, SKU_REGEX_DESC)
-      .describe(SKU_REGEX_DESC),
-    supplierId: z.string().uuid().describe("Supplier UUID"),
+    sku: z.string().describe(SKU_PARAM_DESC),
+    supplierId: z.string().describe(SUPPLIER_ID_DESC),
     supplierSku: z
       .string()
       .nullable()
@@ -223,6 +233,12 @@ export const linkProductSupplierTool = tool({
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const skuErr = guardSku(args.sku);
+    if (skuErr) return skuErr;
+    const idErr = guardUuid(args.supplierId, "supplierId", SUPPLIER_RESOLVER_HINT);
+    if (idErr) return idErr;
+
     try {
       const result = await linkProductSupplier(
         getSupabaseFromContext(ctx),
@@ -251,16 +267,19 @@ export const unlinkProductSupplierTool = tool({
   description:
     "Remove the link between a product and a supplier. The supplier and product remain; only the link row is deleted. Historical movements that referenced this supplier are unaffected. Human-in-the-loop.",
   parameters: z.object({
-    sku: z
-      .string()
-      .regex(SKU_REGEX, SKU_REGEX_DESC)
-      .describe(SKU_REGEX_DESC),
-    supplierId: z.string().uuid().describe("Supplier UUID"),
+    sku: z.string().describe(SKU_PARAM_DESC),
+    supplierId: z.string().describe(SUPPLIER_ID_DESC),
   }),
   execute: async ({ sku, supplierId }, runContext) => {
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const skuErr = guardSku(sku);
+    if (skuErr) return skuErr;
+    const idErr = guardUuid(supplierId, "supplierId", SUPPLIER_RESOLVER_HINT);
+    if (idErr) return idErr;
+
     try {
       const result = await unlinkProductSupplier(
         getSupabaseFromContext(ctx),
@@ -282,16 +301,19 @@ export const setPreferredSupplierTool = tool({
   description:
     "Mark a supplier as the preferred supplier for a product. Any prior preferred supplier for the same product is automatically unmarked. The link must already exist (create it first with `linkProductSupplier`). Human-in-the-loop.",
   parameters: z.object({
-    sku: z
-      .string()
-      .regex(SKU_REGEX, SKU_REGEX_DESC)
-      .describe(SKU_REGEX_DESC),
-    supplierId: z.string().uuid().describe("Supplier UUID to mark preferred"),
+    sku: z.string().describe(SKU_PARAM_DESC),
+    supplierId: z.string().describe(SUPPLIER_ID_DESC),
   }),
   execute: async ({ sku, supplierId }, runContext) => {
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const skuErr = guardSku(sku);
+    if (skuErr) return skuErr;
+    const idErr = guardUuid(supplierId, "supplierId", SUPPLIER_RESOLVER_HINT);
+    if (idErr) return idErr;
+
     try {
       const result = await setPreferredSupplier(
         getSupabaseFromContext(ctx),

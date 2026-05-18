@@ -8,8 +8,9 @@ import {
   listSupplierProducts,
   resolveSupplier,
 } from "../../db/suppliers/reads.js";
-import { SKU_REGEX, SKU_REGEX_DESC } from "../../db/products/sku.js";
+import { SKU_REGEX_DESC } from "../../db/products/sku.js";
 import { getSupabaseFromContext } from "../../supabase.js";
+import { guardSku, guardUuid } from "../_guards.js";
 
 export const listSuppliersTool = tool({
   name: "listSuppliers",
@@ -46,12 +47,23 @@ export const getSupplierTool = tool({
   description:
     "Fetch a single supplier by UUID. Returns full supplier row or null if not found in caller's organization.",
   parameters: z.object({
-    supplierId: z.string().uuid().describe("Supplier UUID"),
+    supplierId: z
+      .string()
+      .describe(
+        "Supplier UUID. If the user gave a name, call resolveSupplier FIRST and use the returned candidates[0].id.",
+      ),
   }),
   execute: async ({ supplierId }, runContext) => {
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const idErr = guardUuid(
+      supplierId,
+      "supplierId",
+      `resolveSupplier({ query: "<name>" })`,
+    );
+    if (idErr) return idErr;
 
     try {
       const row = await getSupplierById(
@@ -69,7 +81,7 @@ export const getSupplierTool = tool({
 export const resolveSupplierTool = tool({
   name: "resolveSupplier",
   description:
-    "Resolve a natural-language supplier reference (name or partial) to a canonical supplier UUID in the caller's organization. Returns candidates and an `ambiguous` flag. Call this whenever the user mentions a supplier by name. If `ambiguous` is true, ask the user to pick before calling any supplier-keyed tool. NEVER fabricate a supplier UUID.",
+    "Resolve a natural-language supplier reference (name or partial) to a canonical supplier UUID in the caller's organization. Returns candidates and an `ambiguous` flag. Call this whenever the user mentions a supplier by name. If `ambiguous` is true, ask the user to pick before calling any supplier-keyed tool. NEVER fabricate a supplier UUID. This is a CHEAP read tool — call it freely. Never skip it to 'save a step'; skipping causes the next tool to fail with supplierId_not_resolved.",
   parameters: z.object({
     query: z.string().min(1).describe("Supplier name or partial text"),
     limit: z.number().int().min(1).max(20).describe("Max candidates (1-20)"),
@@ -100,13 +112,17 @@ export const listProductSuppliersTool = tool({
   parameters: z.object({
     sku: z
       .string()
-      .regex(SKU_REGEX, SKU_REGEX_DESC)
-      .describe(SKU_REGEX_DESC),
+      .describe(
+        `${SKU_REGEX_DESC}. MUST be a canonical SKU — if the user referenced the product by name, call resolveProduct FIRST.`,
+      ),
   }),
   execute: async ({ sku }, runContext) => {
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const skuErr = guardSku(sku);
+    if (skuErr) return skuErr;
 
     try {
       const rows = await listProductSuppliers(
@@ -126,12 +142,23 @@ export const listSupplierProductsTool = tool({
   description:
     "List products supplied by a given supplier (by UUID). Returns product sku, name, supplier_sku, last cost, lead time, preferred flag.",
   parameters: z.object({
-    supplierId: z.string().uuid().describe("Supplier UUID"),
+    supplierId: z
+      .string()
+      .describe(
+        "Supplier UUID. If the user gave a name, call resolveSupplier FIRST.",
+      ),
   }),
   execute: async ({ supplierId }, runContext) => {
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const idErr = guardUuid(
+      supplierId,
+      "supplierId",
+      `resolveSupplier({ query: "<name>" })`,
+    );
+    if (idErr) return idErr;
 
     try {
       const rows = await listSupplierProducts(

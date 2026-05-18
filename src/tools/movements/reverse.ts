@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AgentContext } from "../../agent.js";
 import { reverseMovement } from "../../db/movements/reverse.js";
 import { getSupabaseFromContext } from "../../supabase.js";
+import { guardUuid } from "../_guards.js";
 
 export const reverseStockMovement = tool({
   name: "reverseStockMovement",
@@ -12,8 +13,9 @@ export const reverseStockMovement = tool({
   parameters: z.object({
     movementId: z
       .string()
-      .uuid()
-      .describe("UUID of the original movement to reverse"),
+      .describe(
+        "Full UUID of the original movement to reverse. NEVER pass a short id prefix — use the full UUID returned by listStockMovements or getStockHistory.",
+      ),
     note: z
       .string()
       .nullable()
@@ -23,6 +25,13 @@ export const reverseStockMovement = tool({
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const idErr = guardUuid(
+      movementId,
+      "movementId",
+      `listStockMovements or getStockHistory`,
+    );
+    if (idErr) return idErr;
 
     try {
       const result = await reverseMovement(getSupabaseFromContext(ctx), {

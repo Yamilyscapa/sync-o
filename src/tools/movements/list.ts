@@ -6,8 +6,9 @@ import {
   listMovements,
 } from "../../db/movements/reads.js";
 import { MovementReasonSchema } from "../../db/movements/schema.js";
-import { SKU_REGEX, SKU_REGEX_DESC } from "../../db/products/sku.js";
+import { SKU_REGEX_DESC } from "../../db/products/sku.js";
 import { getSupabaseFromContext } from "../../supabase.js";
+import { guardSku } from "../_guards.js";
 
 export const listStockMovements = tool({
   name: "listStockMovements",
@@ -48,13 +49,20 @@ export const getStockHistory = tool({
   description:
     "Return the movement history of a single product by canonical SKU, newest first. Read-only. SKU must match ^[A-Z]{2,5}-\\d{3,}$ — resolve natural-language references via `resolveProduct` first.",
   parameters: z.object({
-    sku: z.string().regex(SKU_REGEX, SKU_REGEX_DESC).describe(SKU_REGEX_DESC),
+    sku: z
+      .string()
+      .describe(
+        `${SKU_REGEX_DESC}. MUST be a canonical SKU — if the user referenced the product by name, call resolveProduct FIRST.`,
+      ),
     limit: z.number().int().min(1).max(100).describe("Page size, 1-100"),
   }),
   execute: async ({ sku, limit }, runContext) => {
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const skuErr = guardSku(sku);
+    if (skuErr) return skuErr;
 
     try {
       const rows = await getMovementsBySku(

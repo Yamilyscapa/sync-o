@@ -3,23 +3,21 @@ import { z } from "zod";
 import type { AgentContext } from "../../agent.js";
 import { MovementReasonSchema } from "../../db/movements/schema.js";
 import { recordMovement } from "../../db/movements/writes.js";
-import { SKU_REGEX, SKU_REGEX_DESC } from "../../db/products/sku.js";
+import { SKU_REGEX_DESC } from "../../db/products/sku.js";
 import { getSupabaseFromContext } from "../../supabase.js";
+import { guardSku, guardUuid } from "../_guards.js";
 
 export const recordStockMovement = tool({
   name: "recordStockMovement",
   needsApproval: true,
   description:
-    "Register a stock movement (intake, sale, adjustment, loss, transfer, reversal, initial). Human-in-the-loop: the runtime interrupts this call so the user can approve or reject before execution.\n\n" +
-    "Resolve any non-canonical product reference via `resolveProduct` BEFORE calling this. SKU must match ^[A-Z]{2,5}-\\d{3,}$. `delta` is signed (positive = add, negative = remove); must be non-zero. The organization and actor are taken from server-side context.\n\n" +
-    "Required parameters by reason:\n" +
-    "- intake / initial: `supplierId` is REQUIRED — resolve via `resolveSupplier` first, never invent UUIDs. `unitCostCents` may be null for intake — the tool will default to the last known cost from this supplier; for `initial` it MUST be supplied.\n" +
-    "- sale: `unitPriceCents` may be null — the tool will default to the most recent sale price for this SKU, then fall back to the catalog `price_cents`.\n" +
-    "- adjustment / loss / transfer: `supplierId`, `unitCostCents`, `unitPriceCents` MUST all be null.\n" +
-    "- reversal: pass nulls for `supplierId`, `unitCostCents`, `unitPriceCents`; the trigger inherits them from the original movement.\n\n" +
-    "DO NOT ask the user for price/cost in chat when the tool can default. Pass null and let the HITL approval surface the defaulted value. ONLY ask the user when the tool returns `price_required`, `cost_required`, or `supplier_required`.",
+    "Register a stock movement (intake/sale/adjustment/loss/transfer/reversal/initial). Human-in-the-loop. Resolve non-canonical product/supplier refs via resolveProduct/resolveSupplier FIRST. delta is signed and non-zero. intake/initial: supplierId REQUIRED; unitCostCents may be null (defaults to last cost; required for initial). sale: unitPriceCents may be null (defaults to last sale price, then catalog). adjustment/loss/transfer/reversal: supplierId/cost/price MUST be null. Reversal inherits from original via trigger. Do not chat-ask for price/cost when null can default; only ask if tool returns price_required/cost_required/supplier_required.",
   parameters: z.object({
-    sku: z.string().regex(SKU_REGEX, SKU_REGEX_DESC).describe(SKU_REGEX_DESC),
+    sku: z
+      .string()
+      .describe(
+        `${SKU_REGEX_DESC}. MUST be a canonical SKU — never pass a product name. If the user referenced the product by name, call resolveProduct FIRST and use the returned candidate's sku.`,
+      ),
     delta: z
       .number()
       .refine((n) => n !== 0, { message: "delta must be non-zero" })
@@ -30,15 +28,15 @@ export const recordStockMovement = tool({
     note: z.string().nullable().describe("Optional free-text note in Spanish"),
     relatedMovementId: z
       .string()
-      .uuid()
-      .nullable()
-      .describe("UUID of the movement being reversed; required if reason='reversal', else null"),
-    supplierId: z
-      .string()
-      .uuid()
       .nullable()
       .describe(
-        "Supplier UUID. REQUIRED for intake/initial (resolve via `resolveSupplier` if user gave a name). Null for sale/adjustment/loss/transfer. Null for reversal (trigger inherits from original).",
+        "Full UUID of the movement being reversed; required if reason='reversal', else null. NEVER pass a short id prefix — use the full UUID returned by listStockMovements or getStockHistory.",
+      ),
+    supplierId: z
+      .string()
+      .nullable()
+      .describe(
+        "Supplier UUID. REQUIRED for intake/initial. Null for sale/adjustment/loss/transfer/reversal. MUST be a UUID — if the user gave a name, call resolveSupplier FIRST and pass the returned candidates[0].id.",
       ),
     unitCostCents: z
       .number()
@@ -61,6 +59,21 @@ export const recordStockMovement = tool({
     const ctx = runContext?.context as AgentContext | undefined;
     if (!ctx) return "error: missing run context";
     if (!ctx.organizationId) return "error: missing organizationId in context";
+
+    const skuErr = guardSku(args.sku);
+    if (skuErr) return skuErr;
+    const supplierErr = guardUuid(
+      args.supplierId,
+      "supplierId",
+      `resolveSupplier({ query: "<name>" })`,
+    );
+    if (supplierErr) return supplierErr;
+    const relatedErr = guardUuid(
+      args.relatedMovementId,
+      "relatedMovementId",
+      `listStockMovements or getStockHistory`,
+    );
+    if (relatedErr) return relatedErr;
 
     try {
       const result = await recordMovement(getSupabaseFromContext(ctx), {
