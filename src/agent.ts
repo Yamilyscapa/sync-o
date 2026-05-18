@@ -31,7 +31,7 @@ export const buildAgent = (locale: Locale = DEFAULT_LOCALE) =>
   new Agent<AgentContext>({
     name: "sync-o",
     instructions: buildSystemPrompt(locale),
-    model: "gpt-4o-mini",
+    model: "gpt-5-mini",
     tools,
   });
 
@@ -180,6 +180,13 @@ const prompts: Array<string | string[]> = [
   // --- Supplier read tools ---
   "¿Quién me surte tornillos?",
   "Marca a Ferretería del Norte como preferido para IND-001.",
+
+  // --- Resolution discipline regressions ---
+  // Same flow that previously looped on "parámetros inválidos": should now
+  // either resolve supplier in one chain, or recover from supplierId_not_resolved.
+  "Ingresaron 80 tornillos de Ferretería del Norte.",
+  // SKU + supplier both by name in same turn — must chain resolveProduct + resolveSupplier.
+  "Marca a 'Ferretería del Norte' como preferido para tornillos.",
 ];
 
 async function drainApprovals(
@@ -223,5 +230,11 @@ async function runConversation(turns: string[]) {
 }
 
 for (const p of prompts) {
-  await runConversation(Array.isArray(p) ? p : [p]);
+  try {
+    await runConversation(Array.isArray(p) ? p : [p]);
+  } catch (e) {
+    const err = e as { status?: number; message?: string };
+    console.log(`A: [scenario failed: ${err.status ?? "err"} — ${err.message ?? e}]`);
+    console.log();
+  }
 }
