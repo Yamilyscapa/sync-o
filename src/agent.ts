@@ -31,7 +31,7 @@ export const buildAgent = (locale: Locale = DEFAULT_LOCALE) =>
   new Agent<AgentContext>({
     name: "sync-o",
     instructions: buildSystemPrompt(locale),
-    model: "gpt-5-mini",
+    model: "gpt-5-nano",
     tools,
   });
 
