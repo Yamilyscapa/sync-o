@@ -19,6 +19,11 @@ export const MovementRowSchema = z.object({
   reason: MovementReasonSchema,
   note: z.string().nullable(),
   related_movement_id: z.string().nullable(),
+  supplier_id: z.string().nullable(),
+  unit_cost_cents: z.coerce.number().int().nullable(),
+  unit_price_cents: z.coerce.number().int().nullable(),
+  total_cost_cents: z.coerce.number().int().nullable(),
+  total_revenue_cents: z.coerce.number().int().nullable(),
   created_by: z.string(),
   created_at: z.string(),
 });
@@ -38,4 +43,8 @@ export type WriteError =
   | { kind: "already_reversed"; movementId: string; reversalId: string | null }
   | { kind: "reversal_of_reversal"; movementId: string }
   | { kind: "reversal_delta_mismatch"; message: string }
+  | { kind: "price_required"; sku: string }
+  | { kind: "cost_required"; sku: string }
+  | { kind: "supplier_required"; sku: string }
+  | { kind: "supplier_not_found"; supplierId: string }
   | { kind: "unknown"; message: string };

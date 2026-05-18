@@ -89,7 +89,7 @@ export async function reverseMovement(
       created_by: input.userId,
     })
     .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, created_by, created_at",
+      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at",
     )
     .single();
 
