@@ -53,6 +53,22 @@ Examples:
 - `chore(migrations): rename anon key env var`
 - `refactor(tools)!: split db layer from tool wrappers`
 
+## Agent mutation policy (Human-in-the-loop)
+
+**Every agent-driven create, update, or delete operation MUST be a human-in-the-loop (HITL) tool call using the OpenAI Agents SDK `needsApproval` option (or equivalent interruption mechanism).** Read-only operations are exempt.
+
+HITL is **SDK-enforced**, not prompt-enforced. The runtime suspends the run before the tool executes; the host application surfaces the pending approval to the user; the run resumes only after explicit approval. The agent cannot bypass the approval round-trip.
+
+- Every write-capable tool is defined with `needsApproval: true` in its `tool({...})` definition.
+- The approval message restates parsed parameters in user-facing Spanish (default `es-MX`) — product name, delta or new value, reason/note — not raw SKUs alone. Examples:
+  - Intake of 50 unidades → "¿Confirmas que quieres agregar 50 tornillos al almacén?"
+  - Recount adjustment to 55 (current 60) → "¿Confirmas que quieres ajustar el stock de aceite de oliva a 55 unidades (ajuste de -5)?"
+- On rejection, the agent acknowledges and asks what to change. On DB / trigger error (e.g. would-be-negative stock), the error is surfaced verbatim translated to Spanish; the agent must NOT auto-retry with adjusted parameters.
+- Server response payload must expose pending approvals (e.g. `{ output, pendingApprovals }`) so the client can render the prompt; subsequent calls resume the run with the user's decision.
+- The system prompt may still describe the user-facing wording (Spanish, restate params); it is documentation, not a security mechanism.
+
+This rule is durable: it applies to all future entities (products, suppliers, orders, etc.), not just stock movements. Adding a new mutation without HITL is a defect.
+
 ## Agent Skills
 
 `.agents/skills/` contains pinned Supabase skill bundles (`supabase`, `supabase-postgres-best-practices`) tracked in `skills-lock.json` (sourced from `supabase/agent-skills` on GitHub). Consult these when writing Supabase queries, RLS, indexes, or migrations.
