@@ -1,5 +1,5 @@
 import { Agent, run, RunState } from "@openai/agents";
-import type { RunToolApprovalItem } from "@openai/agents";
+import type { AgentInputItem, RunResult, RunToolApprovalItem } from "@openai/agents";
 import { buildSystemPrompt, DEFAULT_LOCALE, type Locale } from "./prompts/system.js";
 import { tools } from "./tools/index.js";
 import { buildApprovalPreview } from "./tools/movements/preview.js";
@@ -115,35 +115,60 @@ const ctx: AgentContext = {
   useServiceRole: true,
 };
 
-const prompts = [
+// Single-turn = string. Multi-turn = string[] (subsequent strings are user replies
+// threaded as conversation history, used to exercise clarification flows).
+const prompts: Array<string | string[]> = [
   "What is the stock of IND-001?",
   "Ingresaron 50 tornillos al almacén.",
   "Vendí 3 taladros.",
+  // Ambiguous outflow — agent should ask first; harness replies "dale" → uses default `sale`.
+  ["Saca 10 tornillos.", "Dale, registralo."],
+  // Ambiguous outflow where the user supplies the reason on follow-up.
+  ["Quita 5 tornillos del inventario.", "Es por merma."],
   "Muestra el historial de IND-001.",
   "Ajusta el stock de aceite de oliva: el conteo físico dio 55.",
-  "Saca 1000 tornillos.",
   "¿Qué movimientos hubo recientemente?",
 ];
 
-async function runHarness(input: string) {
-  console.log(`Q: ${input}`);
-  let res = await runAgent(input, ctx);
+async function drainApprovals(
+  agent: Agent<AgentContext, any>,
+  resultIn: RunResult<AgentContext, Agent<AgentContext, any>>,
+): Promise<RunResult<AgentContext, Agent<AgentContext, any>>> {
+  let result = resultIn;
   let safety = 5;
-  while (res.kind === "awaiting_approval" && safety-- > 0) {
-    for (const a of res.approvals) {
-      console.log(`  [approval needed] ${a.preview}`);
+  while ((result.interruptions?.length ?? 0) > 0 && safety-- > 0) {
+    for (const item of result.interruptions ?? []) {
+      const name = item.name ?? "unknown_tool";
+      console.log(`  [approval needed] ${buildApprovalPreview(name, item.arguments)}`);
+      result.state.approve(item);
     }
-    const decisions: ApprovalDecision[] = res.approvals.map((a) => ({
-      toolName: a.toolName,
-      approved: true, // harness auto-approves
-    }));
     console.log("  [harness auto-approving]");
-    res = await resumeAgent(res.serializedState, decisions, ctx);
+    result = await run(agent, result.state, { context: ctx });
   }
-  if (res.kind === "final") console.log(`A: ${res.output}\n`);
-  else console.log(`A: (still awaiting approval after retries)\n`);
+  return result;
+}
+
+async function runConversation(turns: string[]) {
+  const agent = buildAgent(ctx.locale ?? DEFAULT_LOCALE);
+  console.log(`U: ${turns[0]}`);
+  let result = await run(agent, turns[0], { context: ctx });
+  result = await drainApprovals(agent, result);
+
+  for (let i = 1; i < turns.length; i++) {
+    if (result.finalOutput) console.log(`A: ${result.finalOutput}`);
+    console.log(`U: ${turns[i]}`);
+    const history = result.history;
+    const next: AgentInputItem[] = [
+      ...history,
+      { type: "message", role: "user", content: turns[i] },
+    ];
+    result = await run(agent, next, { context: ctx });
+    result = await drainApprovals(agent, result);
+  }
+
+  console.log(`A: ${result.finalOutput ?? "(no final output)"}\n`);
 }
 
 for (const p of prompts) {
-  await runHarness(p);
+  await runConversation(Array.isArray(p) ? p : [p]);
 }

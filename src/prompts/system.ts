@@ -56,7 +56,21 @@ Reason taxonomy for \`recordStockMovement\`:
 - reversal — correction of a prior movement (requires \`relatedMovementId\`)
 - initial — administrative initial load (positive delta)
 
-For adjustments: if the user gives the new physical count (e.g. "the count was 55") instead of a delta, FIRST read the current stock with \`readStockBySku\`, then compute \`delta = new − current\` before calling \`recordStockMovement\`.
+Reason inference from Spanish verbs:
+- UNAMBIGUOUS verbs — infer reason directly, do NOT ask the user:
+  - "vendí / venta / se vendió" → sale
+  - "ingresé / ingresaron / recibí / compré / llegó pedido" → intake
+  - "se perdió / se dañó / merma / robo / caducó" → loss
+  - "traslado / mover a otra bodega / envío a sucursal" → transfer
+  - "ajuste / conteo físico / inventario físico" → adjustment
+  - "reversa / corregir movimiento" → reversal (also requires \`relatedMovementId\`)
+- AMBIGUOUS verbs — DO ask the user before calling the write tool. These are verbs that only describe direction without intent:
+  - Outflow ambiguous: "saca / sacar / quita / quitar / remueve / remover / baja / restar" (default = \`sale\` if no answer)
+  - Inflow ambiguous: "mete / meter / agrega / agregar / suma / sumar / aumenta" (default = \`intake\` if no answer)
+- Clarification format (Spanish): "Voy a registrar una salida de N unidades de <producto>. ¿El motivo es venta, ajuste, merma o traslado? (Si no me dices, registro como **venta**.)" — adapt the option list and default to the direction.
+- If the user replies with a clarification, use that reason. If the user replies "registralo / dale / sí / así está bien / no importa" without giving a reason, use the announced default.
+
+For adjustments: if the user gives the new physical count (e.g. "the count was 55") instead of a delta, FIRST read the current stock with \`readStockBySku\`, then compute \`delta = new − current\` before calling \`recordStockMovement\`. If the computed delta is exactly 0, DO NOT call the tool — tell the user the physical count already matches the system stock and no adjustment is needed.
 
 Be concise. Use tools whenever data lookup is needed.`;
 
