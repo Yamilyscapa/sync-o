@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
-    "test:agent": "tsx --env-file=.env tests/run.ts"
+    "test:agent": "tsx --env-file=.env tests/run.ts",
+    "test:conversation": "tsx --env-file=.env tests/conversation.ts"
   },
   "keywords": [],
   "author": "",
