@@ -35,24 +35,29 @@ export const buildAgent = (locale: Locale = DEFAULT_LOCALE) =>
     tools,
   });
 
-function toOutput(result: {
-  interruptions?: RunToolApprovalItem[];
-  finalOutput?: unknown;
-  state: { toString(): string };
-}): AgentRunOutput {
+async function toOutput(
+  result: {
+    interruptions?: RunToolApprovalItem[];
+    finalOutput?: unknown;
+    state: { toString(): string };
+  },
+  context: AgentContext,
+): Promise<AgentRunOutput> {
   const interruptions = result.interruptions ?? [];
   if (interruptions.length === 0) {
     return { kind: "final", output: result.finalOutput as string | undefined };
   }
-  const approvals: PendingApproval[] = interruptions.map((item: RunToolApprovalItem) => {
-    const toolName = item.name ?? "unknown_tool";
-    const args = item.arguments;
-    return {
-      toolName,
-      arguments: args,
-      preview: buildApprovalPreview(toolName, args),
-    };
-  });
+  const approvals: PendingApproval[] = await Promise.all(
+    interruptions.map(async (item: RunToolApprovalItem) => {
+      const toolName = item.name ?? "unknown_tool";
+      const args = item.arguments;
+      return {
+        toolName,
+        arguments: args,
+        preview: await buildApprovalPreview(toolName, args, context),
+      };
+    }),
+  );
   return {
     kind: "awaiting_approval",
     serializedState: result.state.toString(),
@@ -66,7 +71,7 @@ export const runAgent = async (
 ): Promise<AgentRunOutput> => {
   const agent = buildAgent(context.locale ?? DEFAULT_LOCALE);
   const result = await run(agent, input, { context });
-  return toOutput(result);
+  return toOutput(result, context);
 };
 
 export type ApprovalDecision = {
@@ -105,7 +110,7 @@ export const resumeAgent = async (
   }
 
   const result = await run(agent, state, { context });
-  return toOutput(result);
+  return toOutput(result, context);
 };
 
 // ! Debug harness: bypasses RLS via service-role client. Remove before production.
@@ -128,6 +133,14 @@ const prompts: Array<string | string[]> = [
   "Muestra el historial de IND-001.",
   "Ajusta el stock de aceite de oliva: el conteo físico dio 55.",
   "¿Qué movimientos hubo recientemente?",
+  // Reversal flow: register wrong intake, then undo it.
+  ["Ingresaron 200 tornillos al almacén.", "Espera, fue un error. Deshaz ese último ingreso."],
+  // User says "borra" — agent must redirect to reversal (append-only ledger).
+  ["Ingresaron 7 tornillos.", "Borra ese último ingreso, fue equivocado."],
+  // Distinguish reversal from correction: legitimate sale followed by a new sale, not a reversal.
+  ["Vendí 2 tornillos.", "Ah no, fueron 4 los que vendí, registra los 2 que faltan."],
+  // Idempotency: double reversal must fail with "ya fue reversado".
+  ["Vendí 1 tornillo.", "Reversa ese movimiento.", "Reversa otra vez ese movimiento."],
 ];
 
 async function drainApprovals(
@@ -139,7 +152,8 @@ async function drainApprovals(
   while ((result.interruptions?.length ?? 0) > 0 && safety-- > 0) {
     for (const item of result.interruptions ?? []) {
       const name = item.name ?? "unknown_tool";
-      console.log(`  [approval needed] ${buildApprovalPreview(name, item.arguments)}`);
+      const preview = await buildApprovalPreview(name, item.arguments, ctx);
+      console.log(`  [approval needed] ${preview}`);
       result.state.approve(item);
     }
     console.log("  [harness auto-approving]");
