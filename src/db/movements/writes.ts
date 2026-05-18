@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
+  MovementInsertedRowSchema,
   MovementReasonSchema,
-  MovementWithProductRowSchema,
+  flattenInsertedMovement,
   type MovementReason,
   type MovementWithProductRow,
   type WriteError,
@@ -168,7 +169,7 @@ export async function recordMovement(
       created_by: input.userId,
     })
     .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at",
+      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, suppliers(name)",
     )
     .single();
 
@@ -182,10 +183,7 @@ export async function recordMovement(
     return { ok: false, error: err };
   }
 
-  const merged = {
-    ...insert.data,
-    sku: product.sku,
-    name: product.name,
-  };
-  return { ok: true, row: MovementWithProductRowSchema.parse(merged) };
+  const parsed = MovementInsertedRowSchema.parse(insert.data);
+  const row = flattenInsertedMovement(parsed, product);
+  return { ok: true, row };
 }

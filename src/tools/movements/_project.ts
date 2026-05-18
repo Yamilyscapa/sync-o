@@ -30,6 +30,7 @@ export type ProjectedMovement = {
   motivo: string;
   fecha: string;
   nota: string | null;
+  proveedor: string | null;
   proveedor_id_corto: string | null;
   costo_unitario_mxn: number | null;
   costo_total_mxn: number | null;
@@ -48,6 +49,7 @@ export function projectMovement(r: MovementWithProductRow): ProjectedMovement {
     motivo: REASON_ES[r.reason],
     fecha: r.created_at,
     nota: r.note,
+    proveedor: r.supplier_name,
     proveedor_id_corto: shortId(r.supplier_id),
     costo_unitario_mxn: centsToPesos(r.unit_cost_cents),
     costo_total_mxn: centsToPesos(r.total_cost_cents),

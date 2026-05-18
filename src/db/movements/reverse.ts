@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  MovementWithProductRowSchema,
+  MovementInsertedRowSchema,
+  flattenInsertedMovement,
   type MovementWithProductRow,
   type WriteError,
 } from "./schema.js";
@@ -89,7 +90,7 @@ export async function reverseMovement(
       created_by: input.userId,
     })
     .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at",
+      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, suppliers(name)",
     )
     .single();
 
@@ -100,10 +101,11 @@ export async function reverseMovement(
     };
   }
 
-  const reversal = MovementWithProductRowSchema.parse({
-    ...insert.data,
+  const parsed = MovementInsertedRowSchema.parse(insert.data);
+  const reversal = flattenInsertedMovement(parsed, {
     sku: original.sku,
     name: original.name,
+    supplier_name_fallback: original.supplier_name,
   });
 
   return { ok: true, reversal, original };

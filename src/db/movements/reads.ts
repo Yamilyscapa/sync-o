@@ -29,10 +29,14 @@ const RawJoinedRowSchema = z.object({
       z.array(z.object({ sku: z.string(), name: z.string() })),
     ])
     .nullable(),
+  suppliers: z
+    .union([z.object({ name: z.string() }), z.array(z.object({ name: z.string() }))])
+    .nullable(),
 });
 
 function flatten(row: z.infer<typeof RawJoinedRowSchema>): MovementWithProductRow {
   const prod = Array.isArray(row.products) ? row.products[0] : row.products;
+  const sup = Array.isArray(row.suppliers) ? row.suppliers[0] : row.suppliers;
   return MovementWithProductRowSchema.parse({
     id: row.id,
     organization_id: row.organization_id,
@@ -50,6 +54,7 @@ function flatten(row: z.infer<typeof RawJoinedRowSchema>): MovementWithProductRo
     created_at: row.created_at,
     sku: prod?.sku ?? "",
     name: prod?.name ?? "",
+    supplier_name: sup?.name ?? null,
   });
 }
 
@@ -66,7 +71,7 @@ export async function listMovements(
   let q = supabase
     .from("stock_movements")
     .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name)",
+      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name), suppliers(name)",
     )
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
@@ -88,7 +93,7 @@ export async function getMovementById(
   const { data, error } = await supabase
     .from("stock_movements")
     .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name)",
+      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name), suppliers(name)",
     )
     .eq("organization_id", organizationId)
     .eq("id", movementId)
@@ -139,7 +144,7 @@ export async function getMovementsBySku(
   const { data, error } = await supabase
     .from("stock_movements")
     .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name)",
+      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name), suppliers(name)",
     )
     .eq("organization_id", organizationId)
     .eq("product_id", productId)
