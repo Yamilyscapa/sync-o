@@ -51,8 +51,10 @@ export const recordStockMovement = tool({
             return `error: el movimiento dejaría el stock en negativo (${result.error.message})`;
           case "cross_org":
             return `error: el producto pertenece a otra organización`;
-          default:
+          case "unknown":
             return `error: ${result.error.message}`;
+          default:
+            return `error: ${result.error.kind}`;
         }
       }
 
