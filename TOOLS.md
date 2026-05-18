@@ -51,6 +51,20 @@ Writes (🔒):
 | `recordStockMovement` | Post a signed delta (`intake`/`sale`/`adjustment`/`loss`/`transfer`/`reversal`/`initial`). Trigger updates `products.quantity`; rejects negative stock. |
 | `reverseStockMovement` | Post compensating row (`delta=-original.delta`, `reason='reversal'`). Each movement reversible once; reversal of a reversal blocked. |
 
+## Analysis (`src/agent/analysis.ts`)
+
+Read-only sub-agent exposed as a single tool on the main agent.
+
+| Tool | Purpose |
+|---|---|
+| `analyze` | Delegates to `sync-o-analysis` sub-agent. Handles replenishment suggestions, sales/rotation trends, margin & cost analysis, supplier performance. Pass user request verbatim as `input`. Returns Spanish prose with concrete numbers (qty, days, $MXN, %). NEVER writes — if user wants to act on a recommendation, main agent calls the appropriate write tool with HITL. |
+
+Sub-agent toolset: all product reads, all supplier reads, `listStockMovements`, `getStockHistory`. No write tools wired.
+
+Main agent must NOT route direct lookups through `analyze` — `readStockBySku` / `listLowStock` / `listStockMovements` stay on the main agent. See `src/prompts/system.ts` for routing rules.
+
+Output post-processing: `sanitizeAnalysisOutput` (in `src/agent/analysis.ts`) runs after the run when history shows an `analyze` call. Strips banned English business terms (lead time / top movers / dead stock / etc.), corporate headers ("Resumen ejecutivo", "Observaciones"), and trailing offers ("Si quieres…", "¿Quieres que…?"). Defense-in-depth — the sub-agent prompt already forbids these, sanitizer catches drift.
+
 ## Conventions
 
 - **Resolver first.** SKU/supplierId params accept any string at the Zod boundary; tool-layer `guardSku`/`guardUuid` returns an actionable error pointing to `resolveProduct` / `resolveSupplier` when the model passes a name. Prevents silent failures + opaque DB errors.

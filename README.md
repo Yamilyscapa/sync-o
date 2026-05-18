@@ -23,7 +23,9 @@ src/
   agent.ts          buildAgent / runAgent / resumeAgent (HITL + persistence)
   agent/history.ts  Bounded replay window (40 items / 24k chars, pair-safe)
   agent/summary.ts  Rolling Spanish summary of dropped turns (gpt-5-nano)
+  agent/analysis.ts Read-only analysis sub-agent exposed as `analyze` tool + output sanitizer
   prompts/system.ts System prompt builder (locale-aware)
+  prompts/analysis.ts Analysis sub-agent prompt (locale-aware)
   tools/            LLM-facing tool wrappers (see tools.md)
   db/<entity>/      reads.ts / writes.ts / schema.ts (Zod rows)
 supabase/migrations Append-only SQL
@@ -39,6 +41,7 @@ tests/              Harness scenarios; outputs in tests/runs/
 - `pnpm typecheck:tests` — same, tests project
 - `pnpm test:agent` — `tsx --env-file=.env tests/run.ts`
 - `pnpm test:conversation` — persistence + bounded-context + HITL-restart suite (`tests/conversation.ts`)
+- `pnpm test:analysis` — analysis sub-agent scenarios (`tests/analysis.ts`)
 
 ## Env
 

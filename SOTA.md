@@ -2,7 +2,7 @@
 
 Snapshot of what the agent can currently do end-to-end. Update on every shipped capability. Order: newest first per section.
 
-Last updated: 2026-05-18 (conversation persistence)
+Last updated: 2026-05-18 (analysis sub-agent)
 
 ## Capabilities
 
@@ -26,6 +26,14 @@ Last updated: 2026-05-18 (conversation persistence)
 - Reverse a movement by posting a compensating row (HITL). One reversal per original; reversal-of-reversal blocked.
 - List recent movements (`listStockMovements`), filterable by reason + ISO datetime; per-SKU history (`getStockHistory`).
 - Supplier name surfaced on movement rows (joined via PostgREST + Zod-parsed `MovementInsertedRowSchema` + `flattenInsertedMovement`).
+
+### Inventory — Analysis (read-only sub-agent)
+- Exposed to main agent as a single `analyze` tool (`Agent.asTool`); main agent delegates inventory analysis verbatim and surfaces the prose result.
+- Sub-agent (`sync-o-analysis`, `gpt-5-mini`, 24h cache) has the full read toolset: product reads, supplier reads, `listStockMovements`, `getStockHistory`. NO write tools.
+- v1 analyses: **reposición** (velocidad × tiempo de entrega × 1.5 safety factor, vs current qty + min_order_qty), **ventas / rotación** (sum of |delta| per SKU in window, default 30d), **márgenes y costos** (price vs last unit cost from preferred supplier link), **desempeño del proveedor** (observed lead time between intakes, cost variance).
+- Output discipline enforced in `src/prompts/analysis.ts`: Spanish-only, prose first, numbers always carry units ($MXN, días, %, unidades/día), no scaffolding labels, no trailing offers, no follow-up questions.
+- Defense-in-depth sanitizer (`sanitizeAnalysisOutput`) post-processes sub-agent output before main agent receives it: strips banned English (lead time / top movers / dead stock / etc.), corporate headers, and trailing "Si quieres…" patterns.
+- Scenario suite at `tests/analysis.ts` (`pnpm test:analysis`).
 
 ### Agent runtime
 - HTTP entry: `POST /agent/run`, `POST /agent/run/resume`.
@@ -53,7 +61,7 @@ Last updated: 2026-05-18 (conversation persistence)
 - **Conversation UI.** API ready (`GET /conversations`, `GET /conversations/:id`); no sidebar / archive surface.
 - **Title editing.** Auto-derived from the first user message; no rename endpoint.
 - **Orders / purchase orders.** No PO entity; supplier links carry terms but no PO lifecycle.
-- **Reporting.** No aggregate endpoints (period sales, COGS, margin) — only raw ledger queries.
+- **Aggregate reporting endpoints.** No HTTP routes for period sales, COGS, or margin reports — only raw ledger queries + ad-hoc analysis via the `analyze` sub-agent.
 - **Attachments.** No file/image upload on movements or suppliers.
 - **Multi-participant threads.** Each conversation is single-user.
 - **Archive/delete UI for threads.** Status column planned but no surface.
