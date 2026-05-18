@@ -31,3 +31,21 @@ export async function verifyUserJWT(token: string): Promise<User | null> {
   if (error || !data.user) return null;
   return data.user;
 }
+
+/**
+ * Resolve a Supabase client from agent context. The context holds only
+ * serializable inputs (jwt or service-role flag); the client itself is
+ * non-serializable (cycles) and must not live in context.
+ */
+export function getSupabaseFromContext(ctx: {
+  jwt?: string;
+  useServiceRole?: boolean;
+}): SupabaseClient {
+  if (ctx.useServiceRole) return supabase;
+  if (!ctx.jwt) {
+    throw new Error(
+      "no supabase client resolvable: provide ctx.jwt or set ctx.useServiceRole",
+    );
+  }
+  return userSupabase(ctx.jwt);
+}

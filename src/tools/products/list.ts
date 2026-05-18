@@ -6,6 +6,7 @@ import {
   listProducts,
   listStock,
 } from "../../db/products/reads.js";
+import { getSupabaseFromContext } from "../../supabase.js";
 
 export const listProductsTool = tool({
   name: "listProducts",
@@ -27,7 +28,7 @@ export const listProductsTool = tool({
     if (!ctx.organizationId) return "error: missing organizationId in context";
 
     try {
-      const rows = await listProducts(ctx.supabase, ctx.organizationId, {
+      const rows = await listProducts(getSupabaseFromContext(ctx), ctx.organizationId, {
         limit,
         cursor: cursor ?? undefined,
         activeOnly,
@@ -55,7 +56,7 @@ export const listStockTool = tool({
     if (!ctx.organizationId) return "error: missing organizationId in context";
 
     try {
-      const rows = await listStock(ctx.supabase, ctx.organizationId, {
+      const rows = await listStock(getSupabaseFromContext(ctx), ctx.organizationId, {
         limit,
         order,
       });
@@ -84,7 +85,7 @@ export const listLowStockTool = tool({
 
     try {
       const rows = await listLowStock(
-        ctx.supabase,
+        getSupabaseFromContext(ctx),
         ctx.organizationId,
         threshold,
         limit,

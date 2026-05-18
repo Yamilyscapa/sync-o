@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AgentContext } from "../../agent.js";
 import { getStockBySku } from "../../db/products/reads.js";
 import { SKU_REGEX, SKU_REGEX_DESC } from "../../db/products/sku.js";
+import { getSupabaseFromContext } from "../../supabase.js";
 
 export const readStockBySku = tool({
   name: "readStockBySku",
@@ -17,7 +18,7 @@ export const readStockBySku = tool({
     if (!ctx.organizationId) return "error: missing organizationId in context";
 
     try {
-      const row = await getStockBySku(ctx.supabase, ctx.organizationId, sku);
+      const row = await getStockBySku(getSupabaseFromContext(ctx), ctx.organizationId, sku);
       if (!row) return `no product with sku ${sku} in this organization`;
       return `stock(${row.sku}) = ${row.quantity} (${row.name})`;
     } catch (e) {

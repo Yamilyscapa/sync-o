@@ -2,6 +2,7 @@ import { tool } from "@openai/agents";
 import { z } from "zod";
 import type { AgentContext } from "../../agent.js";
 import { resolveProductsByText } from "../../db/products/resolve.js";
+import { getSupabaseFromContext } from "../../supabase.js";
 
 export const resolveProduct = tool({
   name: "resolveProduct",
@@ -17,7 +18,7 @@ export const resolveProduct = tool({
     if (!ctx.organizationId) return "error: missing organizationId in context";
 
     try {
-      const res = await resolveProductsByText(ctx.supabase, ctx.organizationId, query, limit);
+      const res = await resolveProductsByText(getSupabaseFromContext(ctx), ctx.organizationId, query, limit);
       return JSON.stringify(res);
     } catch (e) {
       return `error: ${(e as Error).message}`;
