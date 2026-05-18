@@ -49,7 +49,7 @@ export const reverseStockMovement = tool({
           case "product_not_found":
             return "error: el producto asociado al movimiento ya no existe";
           default:
-            return `error: ${result.error.message}`;
+            return `error: ${result.error.kind}`;
         }
       }
 
