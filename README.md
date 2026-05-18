@@ -20,7 +20,9 @@ src/
   auth.ts           Bearer JWT -> Supabase user -> c.set("user")
   supabase.ts       Service-role client + getSupabaseFromContext
   env.ts            process.env Zod parse (throws on boot)
-  agent.ts          buildAgent / runAgent / resumeAgent (HITL)
+  agent.ts          buildAgent / runAgent / resumeAgent (HITL + persistence)
+  agent/history.ts  Bounded replay window (40 items / 24k chars, pair-safe)
+  agent/summary.ts  Rolling Spanish summary of dropped turns (gpt-5-nano)
   prompts/system.ts System prompt builder (locale-aware)
   tools/            LLM-facing tool wrappers (see tools.md)
   db/<entity>/      reads.ts / writes.ts / schema.ts (Zod rows)
@@ -36,6 +38,7 @@ tests/              Harness scenarios; outputs in tests/runs/
 - `pnpm typecheck` — `tsc --noEmit`
 - `pnpm typecheck:tests` — same, tests project
 - `pnpm test:agent` — `tsx --env-file=.env tests/run.ts`
+- `pnpm test:conversation` — persistence + bounded-context + HITL-restart suite (`tests/conversation.ts`)
 
 ## Env
 
@@ -44,8 +47,12 @@ Optional: `PORT` (3000), `NODE_ENV`. See `.env.example`.
 
 ## HTTP
 
-- `POST /agent/run` — body `{ input: string }`, header `Authorization: Bearer <jwt>`. Returns `{ kind: "final", output } | { kind: "awaiting_approval", serializedState, approvals }`.
-- `POST /agent/run/resume` — body `{ serializedState, decisions: [{ toolName, approved, rejectionMessage? }] }`.
+All routes require `Authorization: Bearer <jwt>`.
+
+- `POST /agent/run` — body `{ input, organizationId?, conversationId? }`. Server creates a new conversation if `conversationId` omitted; otherwise continues the named thread. Returns `{ result: { kind: "final", conversationId, output } | { kind: "awaiting_approval", conversationId, serializedState, approvals } }`.
+- `POST /agent/run/resume` — body `{ decisions, serializedState?, conversationId?, organizationId? }`. EITHER `serializedState` OR `conversationId` is required; passing only `conversationId` reloads the stored `pending_state` from the row (restart-safe HITL).
+- `GET /conversations?organizationId=&limit=&before=` — sidebar list, newest-first by `last_message_at`. RLS-filtered by user + org.
+- `GET /conversations/:id?organizationId=` — conversation header + ordered messages (raw `AgentInputItem` payloads). RLS-filtered.
 
 ## Invariants
 
@@ -54,5 +61,6 @@ Optional: `PORT` (3000), `NODE_ENV`. See `.env.example`.
 - LLM-facing strings (system prompt, tool descriptions, schema enums) are English. Spanish only at the projection boundary (`src/tools/<entity>/_project.ts`).
 - Relative imports use `.js` suffix even from `.ts` (NodeNext ESM).
 - Conventional Commits: `type(scope): message`.
+- Conversation replay is bounded: at most one summary item + 40 history items (24k chars) + new user input pass to the model per turn, regardless of thread age. Dropped older items are encoded into a rolling Spanish summary stored on the conversation row.
 
 See `CLAUDE.md` for the full rule set and `TOOLS.md` / `SOTA.md` for capability scope.

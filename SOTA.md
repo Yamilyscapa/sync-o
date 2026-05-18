@@ -2,7 +2,7 @@
 
 Snapshot of what the agent can currently do end-to-end. Update on every shipped capability. Order: newest first per section.
 
-Last updated: 2026-05-18
+Last updated: 2026-05-18 (conversation persistence)
 
 ## Capabilities
 
@@ -35,14 +35,23 @@ Last updated: 2026-05-18
 - 24h prompt cache retention for stable system prompt + tool defs.
 - Locale-aware system prompt (default `es-MX`); LLM-facing text English, end-user text Spanish.
 
+### Conversation persistence
+- Tables `conversations` + `conversation_messages` with per-user + per-org RLS, `set_updated_at` trigger, monotonic per-conversation `seq` via before-insert trigger.
+- Server issues `conversationId` on the first turn; follow-up turns pass it back to continue. `GET /conversations` (sidebar list) and `GET /conversations/:id` (full thread) exposed via user-JWT client → RLS filters.
+- **Bounded replay** (`src/agent/history.ts`): every continuation turn sends at most a rolling summary + 40 history items / 24k chars + the new user input to the model, regardless of thread age. Pair-safety preserves `function_call ↔ function_call_result` across the window boundary so the model never sees orphaned tool turns.
+- **Rolling summary** (`src/agent/summary.ts`): after every `final` turn, if the window dropped items past the prior `summary_through_seq`, a fire-and-forget `gpt-5-nano` call rewrites the conversation summary in neutral es-MX (≤280 chars), merging the prior summary with newly dropped items.
+- **HITL restart-safe**: when a turn yields `awaiting_approval`, the serialized `RunState` + the approval previews are persisted on the row (`pending_state`, `pending_approvals`, `status='awaiting_approval'`). `POST /agent/run/resume` accepts either the inline `serializedState` (back-compat) OR just `conversationId` (server reloads from the row). Cleared back to `active` on approval.
+- Integration suite at `tests/conversation.ts` (`pnpm test:conversation`) covers multi-turn coherence, window cap + pair-safety unit, tool resolution order, and HITL restart end-to-end.
+
 ### Test harness
 - Scenario runner at `tests/run.ts` writes transcripts to `tests/runs/<ts>/`.
 - Read full files when reviewing (don't `grep ^U:|^A:` — drops multi-line bodies).
 
 ## Not yet capable
 
-- **Conversation persistence.** Threads not stored server-side; client must echo `serializedState` to resume. Plan drafted at `~/.claude/plans/lets-scafold-db-step-sparkling-sedgewick.md`; tables `conversations` + `conversation_messages` + auto-summary not yet built. No "list past chats" surface.
-- **Cross-thread context.** No @-mention / semantic search across threads.
+- **Cross-thread context.** No @-mention / semantic search across threads. No pgvector index over message payloads.
+- **Conversation UI.** API ready (`GET /conversations`, `GET /conversations/:id`); no sidebar / archive surface.
+- **Title editing.** Auto-derived from the first user message; no rename endpoint.
 - **Orders / purchase orders.** No PO entity; supplier links carry terms but no PO lifecycle.
 - **Reporting.** No aggregate endpoints (period sales, COGS, margin) — only raw ledger queries.
 - **Attachments.** No file/image upload on movements or suppliers.
