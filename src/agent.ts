@@ -31,7 +31,14 @@ export const buildAgent = (locale: Locale = DEFAULT_LOCALE) =>
   new Agent<AgentContext>({
     name: "sync-o",
     instructions: buildSystemPrompt(locale),
-    model: "gpt-5-nano",
+    model: "gpt-5-mini",
+    modelSettings: {
+      // Extend OpenAI's prompt-prefix cache from the default ~5-10 min to 24h.
+      // System prompt + tool definitions are stable across turns and across
+      // users; extending retention slashes input-token cost on cache hits
+      // (cached input is ~90% cheaper than fresh input for gpt-5-mini).
+      promptCacheRetention: "24h",
+    },
     tools,
   });
 
