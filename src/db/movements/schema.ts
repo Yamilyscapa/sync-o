@@ -34,4 +34,8 @@ export type WriteError =
   | { kind: "product_not_found"; sku: string }
   | { kind: "negative_stock"; message: string }
   | { kind: "cross_org"; message: string }
+  | { kind: "reversal_target_missing"; movementId: string }
+  | { kind: "already_reversed"; movementId: string; reversalId: string | null }
+  | { kind: "reversal_of_reversal"; movementId: string }
+  | { kind: "reversal_delta_mismatch"; message: string }
   | { kind: "unknown"; message: string };

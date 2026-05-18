@@ -70,6 +70,44 @@ export async function listMovements(
   return z.array(RawJoinedRowSchema).parse(data ?? []).map(flatten);
 }
 
+export async function getMovementById(
+  supabase: SupabaseClient,
+  organizationId: string,
+  movementId: string,
+): Promise<MovementWithProductRow | null> {
+  const { data, error } = await supabase
+    .from("stock_movements")
+    .select(
+      "id, organization_id, product_id, delta, reason, note, related_movement_id, created_by, created_at, products(sku, name)",
+    )
+    .eq("organization_id", organizationId)
+    .eq("id", movementId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return flatten(RawJoinedRowSchema.parse(data));
+}
+
+export async function isMovementReversed(
+  supabase: SupabaseClient,
+  organizationId: string,
+  movementId: string,
+): Promise<{ reversed: boolean; reversalId: string | null }> {
+  const { data, error } = await supabase
+    .from("stock_movements")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("related_movement_id", movementId)
+    .eq("reason", "reversal")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return { reversed: false, reversalId: null };
+  const parsed = z.object({ id: z.string() }).parse(data);
+  return { reversed: true, reversalId: parsed.id };
+}
+
 export async function getMovementsBySku(
   supabase: SupabaseClient,
   organizationId: string,
