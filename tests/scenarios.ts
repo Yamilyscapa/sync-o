@@ -117,6 +117,22 @@ export const resolutionRegressionScenarios: Scenario[] = [
   "Marca a 'Ferretería del Norte' como preferido para tornillos.",
 ];
 
+// Analysis sub-agent scenarios. The main agent must route these to the
+// `analyze` tool; the sub-agent returns a Spanish prose summary with numbers.
+// Negative cases (direct lookups) must NOT route to `analyze`.
+export const analysisScenarios: Scenario[] = [
+  // Replenishment — should hit analyze, mention SKU + suggested qty + supplier.
+  "¿Qué productos debo reponer?",
+  // Sales trend — top movers / velocity over default window.
+  "¿Cómo van las ventas de los últimos 30 días?",
+  // Margin — depends on price_cents vs last unit_cost_cents per product.
+  "¿Cómo está el margen de los tornillos?",
+  // Supplier performance — cost variance + observed lead time approx.
+  "¿Cómo va el desempeño de Ferretería del Norte?",
+  // Negative — direct lookup, must NOT call analyze.
+  "¿Cuánto stock hay de IND-001?",
+];
+
 export const allScenarios: Scenario[] = [
   ...setupScenarios,
   ...readSanityScenarios,
@@ -127,4 +143,5 @@ export const allScenarios: Scenario[] = [
   ...supplierReadScenarios,
   ...resolutionRegressionScenarios,
   ...rejectionRegressionScenarios,
+  ...analysisScenarios,
 ];

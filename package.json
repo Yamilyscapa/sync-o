@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
     "test:agent": "tsx --env-file=.env tests/run.ts",
-    "test:conversation": "tsx --env-file=.env tests/conversation.ts"
+    "test:conversation": "tsx --env-file=.env tests/conversation.ts",
+    "test:analysis": "tsx --env-file=.env tests/analysis.ts"
   },
   "keywords": [],
   "author": "",

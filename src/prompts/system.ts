@@ -161,6 +161,13 @@ Distinguish REVERSAL from CORRECTION:
 - Correction: the original action was REAL but additional change is needed ("ayer vendí 3, hoy 5 más", "ah no, fueron 4 en total, faltan 2"). → register a NEW movement (sale / adjustment / etc.), DO NOT reverse.
 - If the user's wording is ambiguous between these two, ASK before calling either tool.
 
+Analysis & recommendations (\`analyze\` tool):
+- The \`analyze\` tool delegates to a read-only analysis sub-agent. Use it for: replenishment suggestions ("¿qué debo reponer?", "qué pedir"), sales / movement trends ("cómo van las ventas", "más vendidos", "stock muerto"), margin & cost analysis ("margen", "rentabilidad"), supplier performance ("desempeño / cumplimiento del proveedor", "variación de costo").
+- DO NOT use \`analyze\` for direct lookups. "¿cuánto stock hay de X?" → \`readStockBySku\`. "¿qué tiene poco stock?" with explicit threshold → \`listLowStock\`. "últimos movimientos" → \`listStockMovements\`.
+- Pass the user's request verbatim as \`input\` (Spanish is fine; the sub-agent handles its own resolution and tool calls).
+- The sub-agent returns a Spanish prose summary with concrete numbers. Surface it verbatim or with light edits. Do NOT re-summarize away the numbers; do NOT translate field names that the sub-agent already projected.
+- The sub-agent NEVER writes. If the user wants to act on a recommendation ("ok, pide 50 al proveedor X"), proceed through the normal write tools (\`recordStockMovement\`, etc.) with HITL — resolve SKU / supplier first, then call the write tool.
+
 Be concise. Use tools whenever data lookup is needed.`;
 
 export const systemPrompt = buildSystemPrompt(DEFAULT_LOCALE);

@@ -2,6 +2,7 @@ import { Agent, run, RunState } from "@openai/agents";
 import type { AgentInputItem, RunToolApprovalItem } from "@openai/agents";
 import { buildSystemPrompt, DEFAULT_LOCALE, type Locale } from "./prompts/system.js";
 import { tools } from "./tools/index.js";
+import { buildAnalysisAgent, sanitizeAnalysisOutput } from "./agent/analysis.js";
 import { buildApprovalPreview } from "./tools/movements/preview.js";
 import { supabase } from "./supabase.js";
 import {
@@ -52,21 +53,40 @@ export type AgentRunOutput =
       approvals: PendingApproval[];
     };
 
-export const buildAgent = (locale: Locale = DEFAULT_LOCALE) =>
-  new Agent<AgentContext>({
+export const buildAgent = (locale: Locale = DEFAULT_LOCALE) => {
+  const analysisAgent = buildAnalysisAgent(locale);
+  const analyzeTool = analysisAgent.asTool({
+    toolName: "analyze",
+    toolDescription:
+      "Delegate inventory analysis to the analysis sub-agent. Use for replenishment suggestions, sales/movement trends, margin & cost analysis, or supplier performance. Pass the user's request verbatim as `input` (Spanish OK). Read-only — never use this for direct stock lookups (use readStockBySku / listLowStock instead). Returns Spanish prose summary with concrete numbers (qty, days, $MXN, %).",
+  });
+  return new Agent<AgentContext>({
     name: "sync-o",
     instructions: buildSystemPrompt(locale),
     model: "gpt-5-mini",
     modelSettings: {
       promptCacheRetention: "24h",
     },
-    tools,
+    tools: [...tools, analyzeTool],
   });
+};
+
+function historyUsedAnalyze(history: unknown): boolean {
+  if (!Array.isArray(history)) return false;
+  return history.some(
+    (item) =>
+      item != null &&
+      typeof item === "object" &&
+      (item as { type?: string }).type === "function_call" &&
+      (item as { name?: string }).name === "analyze",
+  );
+}
 
 async function toOutput(
   result: {
     interruptions?: RunToolApprovalItem[];
     finalOutput?: unknown;
+    history?: unknown;
     state: { toString(): string };
   },
   conversationId: string,
@@ -74,7 +94,11 @@ async function toOutput(
 ): Promise<AgentRunOutput> {
   const interruptions = result.interruptions ?? [];
   if (interruptions.length === 0) {
-    return { kind: "final", conversationId, output: result.finalOutput as string | undefined };
+    const locale = context.locale ?? DEFAULT_LOCALE;
+    const raw = result.finalOutput as string | undefined;
+    const output =
+      raw && historyUsedAnalyze(result.history) ? sanitizeAnalysisOutput(raw, locale) : raw;
+    return { kind: "final", conversationId, output };
   }
   const approvals: PendingApproval[] = await Promise.all(
     interruptions.map(async (item: RunToolApprovalItem) => {
