@@ -11,6 +11,12 @@ import {
   resolveSupplierTool,
 } from "../tools/suppliers/list.js";
 import { getStockHistory, listStockMovements } from "../tools/movements/list.js";
+import {
+  getWarehouseSaturationTool,
+  getWarehouseTool,
+  listWarehousesTool,
+  resolveWarehouseTool,
+} from "../tools/warehouses/list.js";
 
 const analysisReadTools = [
   ...productsTools,
@@ -19,6 +25,10 @@ const analysisReadTools = [
   resolveSupplierTool,
   listProductSuppliersTool,
   listSupplierProductsTool,
+  listWarehousesTool,
+  getWarehouseTool,
+  resolveWarehouseTool,
+  getWarehouseSaturationTool,
   listStockMovements,
   getStockHistory,
 ];
