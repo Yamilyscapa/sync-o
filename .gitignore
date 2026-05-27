@@ -5,4 +5,8 @@ dist
 *.log
 .DS_Store
 .claude/
-tests/runs/
+**/tests/runs/
+.output
+.tanstack
+.vite
+apps/web/src/routeTree.gen.ts

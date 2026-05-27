@@ -1,34 +1,17 @@
 {
   "name": "sync-o",
   "version": "1.0.0",
-  "description": "",
+  "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
-    "test:agent": "tsx --env-file=.env tests/run.ts",
-    "test:conversation": "tsx --env-file=.env tests/conversation.ts",
-    "test:analysis": "tsx --env-file=.env tests/analysis.ts",
-    "test:warehouses": "tsx --env-file=.env tests/warehouses.ts"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "packageManager": "pnpm@11.1.2",
-  "dependencies": {
-    "@hono/node-server": "^2.0.2",
-    "@openai/agents": "^0.11.4",
-    "@supabase/supabase-js": "^2.105.4",
-    "hono": "^4.12.19",
-    "zod": "^4.4.3"
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   },
-  "devDependencies": {
-    "@types/node": "^25.8.0",
-    "tsx": "^4.22.0",
-    "typescript": "^6.0.3"
+  "scripts": {
+    "dev:server": "pnpm --filter @synco/server dev",
+    "dev:web": "pnpm --filter @synco/web dev",
+    "dev:all": "pnpm --parallel --stream --filter @synco/server --filter @synco/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
   }
 }

@@ -182,7 +182,14 @@ Analysis & recommendations (\`analyze\` tool):
 - The sub-agent NEVER writes. If the user wants to act on a recommendation ("ok, pide 50 al proveedor X"), proceed through the normal write tools (\`recordStockMovement\`, etc.) with HITL — resolve SKU / supplier first, then call the write tool.
 
 Output format (avoid verbosity):
-- Comparable rows MUST render as a markdown table — NOT as prose paragraphs and NOT as bullet lists. This applies to: stock-per-bodega breakdowns from \`readStockBySku\`, movement history rows from \`listStockMovements\` / \`getStockHistory\`, multi-supplier listings from \`listProductSuppliers\` / \`listSupplierProducts\`, multi-warehouse listings from \`listWarehouses\`, low-stock listings from \`listLowStock\`. Two or more comparable items → table.
+- Comparable rows MUST render as a GitHub-Flavored-Markdown pipe table — NOT as prose, NOT as bullets, and NEVER as space-aligned text. Every row uses \`|\` separators and a \`|---|---|...\` header separator line. Example:
+  \`\`\`
+  | Código | Bodega          | Ubicación | Estado |
+  |---|---|---|---|
+  | DEFAULT | Bodega principal | —        | Activa |
+  | SUR     | Bodega Sur       | —        | Activa |
+  \`\`\`
+  Applies to: stock-per-bodega breakdowns from \`readStockBySku\`, movement history rows from \`listStockMovements\` / \`getStockHistory\`, multi-supplier listings from \`listProductSuppliers\` / \`listSupplierProducts\`, multi-warehouse listings from \`listWarehouses\`, low-stock listings from \`listLowStock\`. Two or more comparable items → pipe table.
 - Compact Spanish headers ("SKU", "Producto", "Existencia", "Bodega", "Código", "Proveedor", "Costo unit.", "Precio unit.", "Cantidad", "Motivo", "Fecha", "Movimiento"). One row per item. Include the currency suffix once in the column header so cells stay short.
 - Single-value answers (one SKU's stock, one supplier's lead time, one confirmation message) stay as prose. Errors, ambiguity ("encontré dos proveedores con ese nombre, ¿cuál?"), and approval acks ("entrada registrada") stay as prose.
 - Hide UUIDs unless the user asked for an id; first 8 chars are usually enough in tables (e.g. "a85e1a5a…").

@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { requireAuth, type AuthVariables } from "./auth.js";
 import {
@@ -7,6 +9,7 @@ import {
   type AgentContext,
   type ApprovalDecision,
 } from "./agent.js";
+import { runAgentStream, resumeAgentStream } from "./agent.stream.js";
 import { userSupabase } from "./supabase.js";
 import {
   getConversation,
@@ -49,7 +52,36 @@ const GetQuery = z.object({
 
 export const app = new Hono<{ Variables: AuthVariables }>();
 
+app.use(
+  "*",
+  cors({
+    origin: (origin) => origin ?? "*",
+    credentials: false,
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["authorization", "content-type", "accept"],
+  }),
+);
+
 app.get("/health", (c) => c.json({ ok: true }));
+
+app.get("/me", requireAuth, async (c) => {
+  const user = c.get("user");
+  const jwt = c.get("jwt");
+  const supabase = userSupabase(jwt);
+  const { data, error } = await supabase
+    .from("organization_members")
+    .select("role, organization:organizations(id, name)")
+    .eq("user_id", user.id);
+  if (error) return c.json({ error: error.message }, 500);
+  const organizations = (data ?? [])
+    .map((row: any) => {
+      const org = Array.isArray(row.organization) ? row.organization[0] : row.organization;
+      if (!org) return null;
+      return { id: org.id, name: org.name, role: row.role };
+    })
+    .filter((x: unknown): x is { id: string; name: string; role: string } => !!x);
+  return c.json({ user: { id: user.id, email: user.email ?? null }, organizations });
+});
 
 app.post("/agent/run", requireAuth, async (c) => {
   const json = await c.req.json().catch(() => null);
@@ -92,6 +124,66 @@ app.post("/agent/run/resume", requireAuth, async (c) => {
   return c.json({ userId: user.id, result });
 });
 
+app.post("/agent/run/stream", requireAuth, async (c) => {
+  const json = await c.req.json().catch(() => null);
+  const parsed = RunBody.safeParse(json);
+  if (!parsed.success) {
+    return c.json({ error: "invalid body", issues: parsed.error.issues }, 400);
+  }
+  const user = c.get("user");
+  const jwt = c.get("jwt");
+  const context: AgentContext = {
+    userId: user.id,
+    organizationId: parsed.data.organizationId,
+    conversationId: parsed.data.conversationId,
+    jwt,
+  };
+  return streamSSE(c, async (stream) => {
+    try {
+      await runAgentStream(parsed.data.input, context, async (ev) => {
+        const { type, ...rest } = ev as any;
+        await stream.writeSSE({ event: type, data: JSON.stringify(rest) });
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await stream.writeSSE({ event: "error", data: JSON.stringify({ message }) });
+    }
+  });
+});
+
+app.post("/agent/run/resume/stream", requireAuth, async (c) => {
+  const json = await c.req.json().catch(() => null);
+  const parsed = ResumeBody.safeParse(json);
+  if (!parsed.success) {
+    return c.json({ error: "invalid body", issues: parsed.error.issues }, 400);
+  }
+  const user = c.get("user");
+  const jwt = c.get("jwt");
+  const context: AgentContext = {
+    userId: user.id,
+    organizationId: parsed.data.organizationId,
+    conversationId: parsed.data.conversationId,
+    jwt,
+  };
+  const decisions: ApprovalDecision[] = parsed.data.decisions;
+  return streamSSE(c, async (stream) => {
+    try {
+      await resumeAgentStream(
+        parsed.data.serializedState ?? null,
+        decisions,
+        context,
+        async (ev) => {
+          const { type, ...rest } = ev as any;
+          await stream.writeSSE({ event: type, data: JSON.stringify(rest) });
+        },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await stream.writeSSE({ event: "error", data: JSON.stringify({ message }) });
+    }
+  });
+});
+
 app.get("/conversations", requireAuth, async (c) => {
   const parsed = ListQuery.safeParse(Object.fromEntries(new URL(c.req.url).searchParams));
   if (!parsed.success) {
@@ -128,5 +220,18 @@ app.get("/conversations/:id", requireAuth, async (c) => {
     id,
   );
   if (!result) return c.json({ error: "not_found" }, 404);
-  return c.json(result);
+  const messages = result.messages.map((m) => ({
+    seq: m.seq,
+    role: m.role,
+    payload: m.payload,
+  }));
+  return c.json({
+    conversation: {
+      id: result.header.id,
+      title: result.header.title,
+      status: result.header.status,
+      pending_approvals: result.header.pending_approvals ?? null,
+      messages,
+    },
+  });
 });
