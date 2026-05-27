@@ -15,6 +15,7 @@ export const MovementRowSchema = z.object({
   id: z.string(),
   organization_id: z.string(),
   product_id: z.string(),
+  warehouse_id: z.string(),
   delta: z.coerce.number(),
   reason: MovementReasonSchema,
   note: z.string().nullable(),
@@ -33,6 +34,8 @@ export const MovementWithProductRowSchema = MovementRowSchema.extend({
   sku: z.string(),
   name: z.string(),
   supplier_name: z.string().nullable(),
+  warehouse_code: z.string().nullable(),
+  warehouse_name: z.string().nullable(),
 });
 export type MovementWithProductRow = z.infer<typeof MovementWithProductRowSchema>;
 
@@ -42,24 +45,41 @@ const SupplierJoinSchema = z
   .union([z.object({ name: z.string() }), z.array(z.object({ name: z.string() }))])
   .nullable();
 
-// Shape returned by `insert(...).select("<cols>, suppliers(name)").single()` —
-// movement row + supplier join slot, no product join. writes.ts and reverse.ts
-// parse insert.data through this to avoid casting the PostgREST response.
+const WarehouseJoinSchema = z
+  .union([
+    z.object({ code: z.string(), name: z.string() }),
+    z.array(z.object({ code: z.string(), name: z.string() })),
+  ])
+  .nullable();
+
+// Shape returned by `insert(...).select("<cols>, suppliers(name), warehouses(code,name)").single()`
+// — movement row + join slots, no product join. Parse insert.data through this
+// to avoid casting the PostgREST response.
 export const MovementInsertedRowSchema = MovementRowSchema.extend({
   suppliers: SupplierJoinSchema,
+  warehouses: WarehouseJoinSchema,
 });
 
 export function flattenInsertedMovement(
   row: z.infer<typeof MovementInsertedRowSchema>,
-  product: { sku: string; name: string; supplier_name_fallback?: string | null },
+  product: {
+    sku: string;
+    name: string;
+    supplier_name_fallback?: string | null;
+    warehouse_code_fallback?: string | null;
+    warehouse_name_fallback?: string | null;
+  },
 ): MovementWithProductRow {
   const sup = Array.isArray(row.suppliers) ? row.suppliers[0] : row.suppliers;
-  const { suppliers: _drop, ...rest } = row;
+  const wh = Array.isArray(row.warehouses) ? row.warehouses[0] : row.warehouses;
+  const { suppliers: _s, warehouses: _w, ...rest } = row;
   return MovementWithProductRowSchema.parse({
     ...rest,
     sku: product.sku,
     name: product.name,
     supplier_name: sup?.name ?? product.supplier_name_fallback ?? null,
+    warehouse_code: wh?.code ?? product.warehouse_code_fallback ?? null,
+    warehouse_name: wh?.name ?? product.warehouse_name_fallback ?? null,
   });
 }
 
@@ -75,4 +95,6 @@ export type WriteError =
   | { kind: "cost_required"; sku: string }
   | { kind: "supplier_required"; sku: string }
   | { kind: "supplier_not_found"; supplierId: string }
+  | { kind: "warehouse_required"; sku: string }
+  | { kind: "warehouse_not_found"; warehouseId: string }
   | { kind: "unknown"; message: string };

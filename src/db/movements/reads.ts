@@ -7,11 +7,11 @@ import {
   type MovementWithProductRow,
 } from "./schema.js";
 
-// Supabase returns the joined products as a nested object (or array). Normalize.
 const RawJoinedRowSchema = z.object({
   id: z.string(),
   organization_id: z.string(),
   product_id: z.string(),
+  warehouse_id: z.string(),
   delta: z.coerce.number(),
   reason: MovementReasonSchema,
   note: z.string().nullable(),
@@ -32,15 +32,26 @@ const RawJoinedRowSchema = z.object({
   suppliers: z
     .union([z.object({ name: z.string() }), z.array(z.object({ name: z.string() }))])
     .nullable(),
+  warehouses: z
+    .union([
+      z.object({ code: z.string(), name: z.string() }),
+      z.array(z.object({ code: z.string(), name: z.string() })),
+    ])
+    .nullable(),
 });
+
+const MOVEMENT_JOIN_COLS =
+  "id, organization_id, product_id, warehouse_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name), suppliers(name), warehouses(code, name)";
 
 function flatten(row: z.infer<typeof RawJoinedRowSchema>): MovementWithProductRow {
   const prod = Array.isArray(row.products) ? row.products[0] : row.products;
   const sup = Array.isArray(row.suppliers) ? row.suppliers[0] : row.suppliers;
+  const wh = Array.isArray(row.warehouses) ? row.warehouses[0] : row.warehouses;
   return MovementWithProductRowSchema.parse({
     id: row.id,
     organization_id: row.organization_id,
     product_id: row.product_id,
+    warehouse_id: row.warehouse_id,
     delta: row.delta,
     reason: row.reason,
     note: row.note,
@@ -55,6 +66,8 @@ function flatten(row: z.infer<typeof RawJoinedRowSchema>): MovementWithProductRo
     sku: prod?.sku ?? "",
     name: prod?.name ?? "",
     supplier_name: sup?.name ?? null,
+    warehouse_code: wh?.code ?? null,
+    warehouse_name: wh?.name ?? null,
   });
 }
 
@@ -65,20 +78,20 @@ export async function listMovements(
     limit?: number;
     reason?: MovementReason;
     sinceIso?: string;
+    warehouseId?: string;
   } = {},
 ): Promise<MovementWithProductRow[]> {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
   let q = supabase
     .from("stock_movements")
-    .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name), suppliers(name)",
-    )
+    .select(MOVEMENT_JOIN_COLS)
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
   if (opts.reason) q = q.eq("reason", opts.reason);
   if (opts.sinceIso) q = q.gte("created_at", opts.sinceIso);
+  if (opts.warehouseId) q = q.eq("warehouse_id", opts.warehouseId);
 
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -92,9 +105,7 @@ export async function getMovementById(
 ): Promise<MovementWithProductRow | null> {
   const { data, error } = await supabase
     .from("stock_movements")
-    .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name), suppliers(name)",
-    )
+    .select(MOVEMENT_JOIN_COLS)
     .eq("organization_id", organizationId)
     .eq("id", movementId)
     .maybeSingle();
@@ -127,9 +138,9 @@ export async function getMovementsBySku(
   supabase: SupabaseClient,
   organizationId: string,
   sku: string,
-  limit = 20,
+  opts: { limit?: number; warehouseId?: string; reason?: MovementReason; sinceIso?: string } = {},
 ): Promise<MovementWithProductRow[]> {
-  const cappedLimit = Math.min(Math.max(limit, 1), 100);
+  const cappedLimit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
 
   const productLookup = await supabase
     .from("products")
@@ -141,16 +152,19 @@ export async function getMovementsBySku(
   if (!productLookup.data) return [];
   const productId = z.object({ id: z.string() }).parse(productLookup.data).id;
 
-  const { data, error } = await supabase
+  let q = supabase
     .from("stock_movements")
-    .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, products(sku, name), suppliers(name)",
-    )
+    .select(MOVEMENT_JOIN_COLS)
     .eq("organization_id", organizationId)
     .eq("product_id", productId)
     .order("created_at", { ascending: false })
     .limit(cappedLimit);
 
+  if (opts.warehouseId) q = q.eq("warehouse_id", opts.warehouseId);
+  if (opts.reason) q = q.eq("reason", opts.reason);
+  if (opts.sinceIso) q = q.gte("created_at", opts.sinceIso);
+
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   return z.array(RawJoinedRowSchema).parse(data ?? []).map(flatten);
 }

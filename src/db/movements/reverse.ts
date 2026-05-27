@@ -83,6 +83,9 @@ export async function reverseMovement(
     .insert({
       organization_id: input.organizationId,
       product_id: original.product_id,
+      // Trigger will overwrite warehouse_id with the original's; we pass the
+      // same value explicitly to satisfy the NOT NULL constraint pre-trigger.
+      warehouse_id: original.warehouse_id,
       delta: -original.delta,
       reason: "reversal",
       note: input.note,
@@ -90,7 +93,7 @@ export async function reverseMovement(
       created_by: input.userId,
     })
     .select(
-      "id, organization_id, product_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, suppliers(name)",
+      "id, organization_id, product_id, warehouse_id, delta, reason, note, related_movement_id, supplier_id, unit_cost_cents, unit_price_cents, total_cost_cents, total_revenue_cents, created_by, created_at, suppliers(name), warehouses(code, name)",
     )
     .single();
 
@@ -106,6 +109,8 @@ export async function reverseMovement(
     sku: original.sku,
     name: original.name,
     supplier_name_fallback: original.supplier_name,
+    warehouse_code_fallback: original.warehouse_code,
+    warehouse_name_fallback: original.warehouse_name,
   });
 
   return { ok: true, reversal, original };
