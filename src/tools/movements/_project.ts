@@ -28,6 +28,8 @@ export type ProjectedMovement = {
   producto: string;
   cantidad: number;
   motivo: string;
+  bodega: string | null;
+  bodega_codigo: string | null;
   fecha: string;
   nota: string | null;
   proveedor: string | null;
@@ -47,6 +49,8 @@ export function projectMovement(r: MovementWithProductRow): ProjectedMovement {
     producto: r.name,
     cantidad: r.delta,
     motivo: REASON_ES[r.reason],
+    bodega: r.warehouse_name,
+    bodega_codigo: r.warehouse_code,
     fecha: r.created_at,
     nota: r.note,
     proveedor: r.supplier_name,

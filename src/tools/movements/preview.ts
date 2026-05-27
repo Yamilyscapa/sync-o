@@ -6,10 +6,12 @@ import {
   getProductSupplierLink,
   getSupplierById,
 } from "../../db/suppliers/reads.js";
+import { getWarehouseById } from "../../db/warehouses/reads.js";
 import { getSupabaseFromContext } from "../../supabase.js";
 
 const RecordStockMovementArgsSchema = z.object({
   sku: z.string(),
+  warehouseId: z.string(),
   delta: z.number(),
   reason: MovementReasonSchema,
   note: z.string().nullable().optional(),
@@ -17,6 +19,50 @@ const RecordStockMovementArgsSchema = z.object({
   supplierId: z.string().nullable().optional(),
   unitCostCents: z.number().int().nullable().optional(),
   unitPriceCents: z.number().int().nullable().optional(),
+});
+
+const CreateWarehouseArgsSchema = z.object({
+  name: z.string(),
+  code: z.string(),
+  location: z.string().nullable().optional(),
+});
+
+const UpdateWarehouseArgsSchema = z.object({
+  warehouseId: z.string(),
+  name: z.string().nullable().optional(),
+  code: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+});
+
+const DeactivateWarehouseArgsSchema = z.object({
+  warehouseId: z.string(),
+});
+
+const TransferStockArgsSchema = z.object({
+  sku: z.string(),
+  fromWarehouseId: z.string(),
+  toWarehouseId: z.string(),
+  quantity: z.number(),
+  note: z.string().nullable().optional(),
+});
+
+const SetReorderPointArgsSchema = z.object({
+  sku: z.string(),
+  warehouseId: z.string(),
+  minStock: z.number(),
+});
+
+const BulkInitializeStockArgsSchema = z.object({
+  warehouseId: z.string(),
+  items: z.array(
+    z.object({
+      sku: z.string(),
+      quantity: z.number(),
+      unitCostCents: z.number().int(),
+      supplierId: z.string(),
+      note: z.string().nullable().optional(),
+    }),
+  ),
 });
 
 const ReverseStockMovementArgsSchema = z.object({
@@ -138,8 +184,78 @@ export async function buildApprovalPreview(
   if (toolName === "setPreferredSupplier") {
     return previewSetPreferredSupplier(parsed, ctx);
   }
+  if (toolName === "createWarehouse") {
+    return previewCreateWarehouse(parsed);
+  }
+  if (toolName === "updateWarehouse") {
+    return previewUpdateWarehouse(parsed, ctx);
+  }
+  if (toolName === "deactivateWarehouse") {
+    return previewDeactivateWarehouse(parsed, ctx);
+  }
+  if (toolName === "bulkInitializeStock") {
+    return previewBulkInitializeStock(parsed, ctx);
+  }
+  if (toolName === "transferStock") {
+    return previewTransferStock(parsed, ctx);
+  }
+  if (toolName === "setReorderPoint") {
+    return previewSetReorderPoint(parsed, ctx);
+  }
 
   return `Confirma la operación: ${toolName} con args ${rawArgs}`;
+}
+
+async function previewTransferStock(
+  parsed: unknown,
+  ctx: AgentContext,
+): Promise<string> {
+  const result = TransferStockArgsSchema.safeParse(parsed);
+  if (!result.success || !ctx.organizationId) {
+    return `Confirma traslado (parámetros inválidos)`;
+  }
+  const { sku, fromWarehouseId, toWarehouseId, quantity, note } = result.data;
+  const supabase = getSupabaseFromContext(ctx);
+  let fromLabel = fromWarehouseId;
+  let toLabel = toWarehouseId;
+  try {
+    const [src, dst] = await Promise.all([
+      getWarehouseById(supabase, ctx.organizationId, fromWarehouseId),
+      getWarehouseById(supabase, ctx.organizationId, toWarehouseId),
+    ]);
+    if (src) fromLabel = `${src.name} (${src.code})`;
+    if (dst) toLabel = `${dst.name} (${dst.code})`;
+  } catch {
+    // best-effort
+  }
+  const noteSuffix = note ? ` Nota: "${note}".` : "";
+  return `¿Confirmas trasladar ${quantity} unidades de ${sku} de la bodega **${fromLabel}** a **${toLabel}**? Se registrarán dos movimientos en una sola operación.${noteSuffix}`;
+}
+
+async function previewSetReorderPoint(
+  parsed: unknown,
+  ctx: AgentContext,
+): Promise<string> {
+  const result = SetReorderPointArgsSchema.safeParse(parsed);
+  if (!result.success || !ctx.organizationId) {
+    return `Confirma punto de reorden (parámetros inválidos)`;
+  }
+  const { sku, warehouseId, minStock } = result.data;
+  let bodega = warehouseId;
+  try {
+    const w = await getWarehouseById(
+      getSupabaseFromContext(ctx),
+      ctx.organizationId,
+      warehouseId,
+    );
+    if (w) bodega = `${w.name} (${w.code})`;
+  } catch {
+    // ignore
+  }
+  if (minStock === 0) {
+    return `¿Confirmas eliminar el punto de reorden de **${sku}** en la bodega **${bodega}**?`;
+  }
+  return `¿Confirmas establecer el punto de reorden de **${sku}** en la bodega **${bodega}** a **${minStock} unidades**? Cuando la existencia caiga a ese nivel o menos, listLowStock (modo reorden) la incluirá.`;
 }
 
 async function previewRecordStockMovement(
@@ -150,13 +266,21 @@ async function previewRecordStockMovement(
   if (!result.success || !ctx.organizationId) {
     return `Confirma registro de movimiento (parámetros inválidos)`;
   }
-  const { sku, delta, reason, note, supplierId, unitCostCents, unitPriceCents } =
+  const { sku, warehouseId, delta, reason, note, supplierId, unitCostCents, unitPriceCents } =
     result.data;
   const sign = delta > 0 ? "+" : "";
   const reasonEs = REASON_ES[reason];
   const noteSuffix = note ? `, nota: "${note}"` : "";
 
   const supabase = getSupabaseFromContext(ctx);
+
+  let warehouseLabel = "";
+  try {
+    const w = await getWarehouseById(supabase, ctx.organizationId, warehouseId);
+    if (w) warehouseLabel = ` en bodega **${w.name}** (${w.code})`;
+  } catch {
+    // best-effort
+  }
 
   let supplierLabel = "";
   if (supplierId) {
@@ -244,7 +368,101 @@ async function previewRecordStockMovement(
   }
 
   const economics = costLine || priceLine;
-  return `¿Confirmas registrar un movimiento de ${sign}${delta} unidades de ${sku}${supplierLabel} (${reasonEs})${economics}${noteSuffix}?`;
+  return `¿Confirmas registrar un movimiento de ${sign}${delta} unidades de ${sku}${warehouseLabel}${supplierLabel} (${reasonEs})${economics}${noteSuffix}?`;
+}
+
+function previewCreateWarehouse(parsed: unknown): string {
+  const result = CreateWarehouseArgsSchema.safeParse(parsed);
+  if (!result.success) return `Confirma crear bodega (parámetros inválidos)`;
+  const a = result.data;
+  const loc = a.location ? ` — ubicación: ${a.location}` : "";
+  return `¿Confirmas crear la bodega **${a.name}** con código **${a.code.toUpperCase()}**${loc}?`;
+}
+
+async function previewUpdateWarehouse(
+  parsed: unknown,
+  ctx: AgentContext,
+): Promise<string> {
+  const result = UpdateWarehouseArgsSchema.safeParse(parsed);
+  if (!result.success || !ctx.organizationId) {
+    return `Confirma actualizar bodega (parámetros inválidos)`;
+  }
+  const { warehouseId } = result.data;
+  let name = warehouseId;
+  try {
+    const w = await getWarehouseById(
+      getSupabaseFromContext(ctx),
+      ctx.organizationId,
+      warehouseId,
+    );
+    if (w) name = `${w.name} (${w.code})`;
+  } catch {
+    // ignore
+  }
+  const changes: string[] = [];
+  if (result.data.name != null) changes.push(`nombre → ${result.data.name}`);
+  if (result.data.code != null) changes.push(`código → ${result.data.code.toUpperCase()}`);
+  if (result.data.location != null) changes.push(`ubicación → ${result.data.location}`);
+  const detail = changes.length > 0 ? ` Cambios: ${changes.join("; ")}.` : "";
+  return `¿Confirmas actualizar la bodega **${name}**?${detail}`;
+}
+
+async function previewDeactivateWarehouse(
+  parsed: unknown,
+  ctx: AgentContext,
+): Promise<string> {
+  const result = DeactivateWarehouseArgsSchema.safeParse(parsed);
+  if (!result.success || !ctx.organizationId) {
+    return `Confirma desactivar bodega (parámetros inválidos)`;
+  }
+  const { warehouseId } = result.data;
+  let name = warehouseId;
+  try {
+    const w = await getWarehouseById(
+      getSupabaseFromContext(ctx),
+      ctx.organizationId,
+      warehouseId,
+    );
+    if (w) name = `${w.name} (${w.code})`;
+  } catch {
+    // ignore
+  }
+  return `¿Confirmas desactivar la bodega **${name}**? El historial se conserva; quedará oculta de listados por defecto.`;
+}
+
+async function previewBulkInitializeStock(
+  parsed: unknown,
+  ctx: AgentContext,
+): Promise<string> {
+  const result = BulkInitializeStockArgsSchema.safeParse(parsed);
+  if (!result.success || !ctx.organizationId) {
+    return `Confirma carga inicial (parámetros inválidos)`;
+  }
+  const { warehouseId, items } = result.data;
+  let name = warehouseId;
+  try {
+    const w = await getWarehouseById(
+      getSupabaseFromContext(ctx),
+      ctx.organizationId,
+      warehouseId,
+    );
+    if (w) name = `${w.name} (${w.code})`;
+  } catch {
+    // ignore
+  }
+  const totalUnits = items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalCost = items.reduce((sum, i) => sum + i.quantity * i.unitCostCents, 0);
+  const lines = items
+    .slice(0, 5)
+    .map(
+      (i) =>
+        `- ${i.sku}: ${i.quantity} u. a ${formatMxn(i.unitCostCents)}/u`,
+    )
+    .join("\n");
+  const tail = items.length > 5 ? `\n…y ${items.length - 5} más` : "";
+  return `¿Confirmas carga inicial en la bodega **${name}** con ${items.length} producto(s), total ${totalUnits} unidades por ${formatMxn(
+    totalCost,
+  )}?\n${lines}${tail}`;
 }
 
 async function previewReverseStockMovement(

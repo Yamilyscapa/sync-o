@@ -7,6 +7,7 @@ import { SKU_REGEX_DESC } from "../../db/products/sku.js";
 import { getSupabaseFromContext } from "../../supabase.js";
 import { guardSku, guardUuid } from "../_guards.js";
 import { REASON_ES } from "./_project.js";
+import { WAREHOUSE_ID_DESC, WAREHOUSE_RESOLVER_HINT } from "../warehouses/write.js";
 
 export const recordStockMovement = tool({
   name: "recordStockMovement",
@@ -19,6 +20,7 @@ export const recordStockMovement = tool({
       .describe(
         `${SKU_REGEX_DESC}. MUST be a canonical SKU — never pass a product name. If the user referenced the product by name, call resolveProduct FIRST and use the returned candidate's sku.`,
       ),
+    warehouseId: z.string().describe(WAREHOUSE_ID_DESC),
     delta: z
       .number()
       .refine((n) => n !== 0, { message: "delta must be non-zero" })
@@ -63,6 +65,12 @@ export const recordStockMovement = tool({
 
     const skuErr = guardSku(args.sku);
     if (skuErr) return skuErr;
+    const warehouseErr = guardUuid(
+      args.warehouseId,
+      "warehouseId",
+      WAREHOUSE_RESOLVER_HINT,
+    );
+    if (warehouseErr) return warehouseErr;
     const supplierErr = guardUuid(
       args.supplierId,
       "supplierId",
@@ -81,6 +89,7 @@ export const recordStockMovement = tool({
         organizationId: ctx.organizationId,
         userId: ctx.userId,
         sku: args.sku,
+        warehouseId: args.warehouseId,
         delta: args.delta,
         reason: args.reason,
         note: args.note,
@@ -106,6 +115,10 @@ export const recordStockMovement = tool({
             return `error: supplier_required — falta el proveedor para este ${args.reason}. Pregunta al usuario y resuelve con resolveSupplier.`;
           case "supplier_not_found":
             return `error: no se encontró el proveedor ${result.error.supplierId} en esta organización`;
+          case "warehouse_not_found":
+            return `error: no se encontró la bodega ${result.error.warehouseId} en esta organización`;
+          case "warehouse_required":
+            return `error: warehouse_required — falta la bodega para ${result.error.sku}. Pregunta al usuario y resuelve con resolveWarehouse.`;
           case "unknown":
             return `error: ${result.error.message}`;
           default:
@@ -115,7 +128,8 @@ export const recordStockMovement = tool({
 
       const r = result.row;
       const sign = r.delta > 0 ? "+" : "";
-      return `movimiento registrado: ${r.sku} ${sign}${r.delta} (${REASON_ES[r.reason]}) — id=${r.id}`;
+      const bodega = r.warehouse_code ? ` en bodega ${r.warehouse_code}` : "";
+      return `movimiento registrado: ${r.sku} ${sign}${r.delta} (${REASON_ES[r.reason]})${bodega} — id=${r.id}`;
     } catch (e) {
       return `error: ${(e as Error).message}`;
     }
