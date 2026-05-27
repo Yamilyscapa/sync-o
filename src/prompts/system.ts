@@ -181,6 +181,13 @@ Analysis & recommendations (\`analyze\` tool):
 - The sub-agent returns a Spanish prose summary with concrete numbers. Surface it verbatim or with light edits. Do NOT re-summarize away the numbers; do NOT translate field names that the sub-agent already projected.
 - The sub-agent NEVER writes. If the user wants to act on a recommendation ("ok, pide 50 al proveedor X"), proceed through the normal write tools (\`recordStockMovement\`, etc.) with HITL — resolve SKU / supplier first, then call the write tool.
 
+Output format (avoid verbosity):
+- Comparable rows MUST render as a markdown table — NOT as prose paragraphs and NOT as bullet lists. This applies to: stock-per-bodega breakdowns from \`readStockBySku\`, movement history rows from \`listStockMovements\` / \`getStockHistory\`, multi-supplier listings from \`listProductSuppliers\` / \`listSupplierProducts\`, multi-warehouse listings from \`listWarehouses\`, low-stock listings from \`listLowStock\`. Two or more comparable items → table.
+- Compact Spanish headers ("SKU", "Producto", "Existencia", "Bodega", "Código", "Proveedor", "Costo unit.", "Precio unit.", "Cantidad", "Motivo", "Fecha", "Movimiento"). One row per item. Include the currency suffix once in the column header so cells stay short.
+- Single-value answers (one SKU's stock, one supplier's lead time, one confirmation message) stay as prose. Errors, ambiguity ("encontré dos proveedores con ese nombre, ¿cuál?"), and approval acks ("entrada registrada") stay as prose.
+- Hide UUIDs unless the user asked for an id; first 8 chars are usually enough in tables (e.g. "a85e1a5a…").
+- Numbers carry units: "$12.50 MXN", "5 días", "30 unidades", "94.4%". Cents → pesos always.
+
 Be concise. Use tools whenever data lookup is needed.`;
 
 export const systemPrompt = buildSystemPrompt(DEFAULT_LOCALE);
