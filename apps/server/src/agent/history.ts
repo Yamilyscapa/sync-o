@@ -130,6 +130,15 @@ export function buildUserMessageItem(text: string): AgentInputItem {
   } as AgentInputItem;
 }
 
+export function buildAssistantTextItem(text: string): AgentInputItem {
+  return {
+    type: "message",
+    role: "assistant",
+    status: "completed",
+    content: [{ type: "output_text", text }],
+  } as AgentInputItem;
+}
+
 export function messagesToRecords(rows: ConversationMessage[]): ItemRecord[] {
   return rows.map((r) => ({ seq: r.seq, item: r.payload as AgentInputItem }));
 }

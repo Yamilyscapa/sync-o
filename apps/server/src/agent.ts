@@ -17,12 +17,14 @@ import {
   type AppendMessageInput,
 } from "./db/conversations/writes.js";
 import {
+  buildAssistantTextItem,
   buildUserMessageItem,
   messagesToRecords,
   roleFromItem,
   selectWindow,
 } from "./agent/history.js";
 import { summarizeForConversation } from "./agent/summary.js";
+import { triageInput } from "./agent/triage.js";
 
 /**
  * Agent context is restricted to SERIALIZABLE values only. The Supabase
@@ -182,6 +184,21 @@ export const runAgent = async (
     priorSummaryThroughSeq = loaded.conversation.summary_through_seq;
   }
 
+  const newUserItem = buildUserMessageItem(input);
+
+  const triage = await triageInput(input, locale);
+  if (triage.scope !== "business") {
+    const reply = triage.reply!;
+    const assistantItem = buildAssistantTextItem(reply);
+    await appendMessages(
+      supabase,
+      conversationId,
+      toAppendInputs([newUserItem, assistantItem]),
+    );
+    await clearPendingState(supabase, conversationId);
+    return { kind: "final", conversationId, output: reply };
+  }
+
   const { window } = selectWindow(priorRecords);
   const items: AgentInputItem[] = [];
   if (priorSummary && priorRecords.length > window.length) {
@@ -190,7 +207,6 @@ export const runAgent = async (
     );
   }
   items.push(...window);
-  const newUserItem = buildUserMessageItem(input);
   items.push(newUserItem);
 
   const effectiveContext: AgentContext = { ...context, conversationId };

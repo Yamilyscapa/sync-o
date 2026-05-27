@@ -20,11 +20,13 @@ import {
   type AppendMessageInput,
 } from "./db/conversations/writes.js";
 import {
+  buildAssistantTextItem,
   buildUserMessageItem,
   messagesToRecords,
   roleFromItem,
   selectWindow,
 } from "./agent/history.js";
+import { triageInput } from "./agent/triage.js";
 
 export type StreamEmit = (ev: StreamEvent) => Promise<void> | void;
 
@@ -102,6 +104,28 @@ export async function runAgentStream(
     priorSummary = loaded.conversation.summary;
   }
 
+  const newUserItem = buildUserMessageItem(input);
+
+  const triage = await triageInput(input, locale);
+  if (triage.scope !== "business") {
+    const reply = triage.reply!;
+    const assistantItem = buildAssistantTextItem(reply);
+    await appendMessages(
+      supabase,
+      conversationId,
+      toAppendInputs([newUserItem, assistantItem]),
+    );
+    await clearPendingState(supabase, conversationId);
+    await emit({ type: "token", delta: reply });
+    const result: AgentRunOutput = {
+      kind: "final",
+      conversationId,
+      output: reply,
+    };
+    await emit({ type: "done", result });
+    return;
+  }
+
   const { window } = selectWindow(priorRecords);
   const items: AgentInputItem[] = [];
   if (priorSummary && priorRecords.length > window.length) {
@@ -110,7 +134,6 @@ export async function runAgentStream(
     );
   }
   items.push(...window);
-  const newUserItem = buildUserMessageItem(input);
   items.push(newUserItem);
 
   const effectiveContext: AgentContext = { ...context, conversationId };
