@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { ChatLayout } from "../components/ChatLayout.js";
 import { ChatShell } from "../components/ChatShell.js";
-import { ConversationSidebar } from "../components/ConversationSidebar.js";
 import { getBrowserClient, getStoredJwt } from "../lib/synco.js";
 
 export const Route = createFileRoute("/chat/new")({
@@ -17,14 +17,13 @@ function NewChatPage() {
   const { session } = Route.useLoaderData();
   const navigate = useNavigate();
   return (
-    <div className="flex h-screen w-full">
-      <ConversationSidebar session={session} />
+    <ChatLayout session={session}>
       <ChatShell
         session={session}
         onConversationCreated={(id) =>
           navigate({ to: "/chat/$conversationId", params: { conversationId: id } })
         }
       />
-    </div>
+    </ChatLayout>
   );
 }

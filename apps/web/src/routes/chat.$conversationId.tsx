@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import type { ConversationDetail, ConversationMessage } from "@synco/sdk";
+import { ChatLayout } from "../components/ChatLayout.js";
 import { ChatShell } from "../components/ChatShell.js";
-import { ConversationSidebar } from "../components/ConversationSidebar.js";
 import type { ChatMessage } from "../components/MessageBubble.js";
 import { getBrowserClient, getStoredJwt } from "../lib/synco.js";
 
@@ -50,14 +50,13 @@ function ChatPage() {
     .filter((x: ChatMessage | null): x is ChatMessage => x !== null);
 
   return (
-    <div className="flex h-screen w-full">
-      <ConversationSidebar session={session} />
+    <ChatLayout session={session}>
       <ChatShell
         key={conversation.id}
         session={session}
         initial={{ messages: initialMessages, conversationId: conversation.id }}
       />
-    </div>
+    </ChatLayout>
   );
 }
 
