@@ -267,12 +267,16 @@ if (!supplierId) {
 // ---- 1. createWarehouse HITL --------------------------------------------
 
 await test("1 createWarehouse HITL flow", async () => {
-  // Use a unique code so this test does not collide with an existing bodega.
-  const code = `TST-${Date.now().toString().slice(-6)}`;
+  // Unique name AND code per run — both columns have a unique index per org;
+  // prior runs leave deactivated bodegas behind (hard delete is blocked by
+  // FK once any movement references the row).
+  const suffix = Date.now().toString().slice(-6);
+  const code = `TST-${suffix}`;
+  const name = `Bodega de Prueba ${suffix}`;
   const conversationId = await freshConversation();
 
   const t1 = await loggedRun(
-    `Crea una bodega llamada Bodega de Prueba con código ${code}.`,
+    `Crea una bodega llamada "${name}" con código ${code}.`,
     { ...CTX, conversationId },
   );
   if (t1.kind !== "awaiting_approval") {
@@ -463,7 +467,11 @@ await test("5 warehouse_saturation RPC returns rows", async () => {
 
 // ---- 6. analyze routing — warehouse-ops question ------------------------
 
-await test("6 analyze routing — warehouse ops", async () => {
+await test("6 warehouse-ops question — analyze OR direct saturation", async () => {
+  // Single-RPC questions (F8: "cómo está repartido", "qué bodega está más
+  // cargada") may be answered either by routing to `analyze` OR by calling
+  // `getWarehouseSaturation` directly. Both produce a correct markdown
+  // table; the direct path saves latency. Accept either.
   const conversationId = await freshConversation();
   const out = await loggedRun("¿Cómo está repartido el inventario entre bodegas?", {
     ...CTX,
@@ -474,14 +482,26 @@ await test("6 analyze routing — warehouse ops", async () => {
   }
   const calls = await toolCallsFor(conversationId);
   console.log(`  tool_calls: [${calls.join(", ")}]`);
-  if (!calls.includes("analyze")) {
-    return fail("6.route", `expected 'analyze' in tool_calls, got [${calls.join(", ")}]`);
+  const acceptable = calls.some((n) => n === "analyze" || n === "getWarehouseSaturation");
+  if (!acceptable) {
+    return fail(
+      "6.route",
+      `expected 'analyze' or 'getWarehouseSaturation', got [${calls.join(", ")}]`,
+    );
   }
   const text = out.output ?? "";
   if (!/\d/.test(text)) {
     return fail("6.quant", `output lacks numbers: ${text.slice(0, 120)}…`);
   }
-  pass("6.route", "warehouse-ops question routed to analyze");
+  // Output should render the per-bodega data as a markdown table (>=2 bodegas).
+  const hasTable = /\|.*\|.*\|/.test(text) && text.split("\n").filter((l) => l.startsWith("|")).length >= 3;
+  if (!hasTable) {
+    return fail(
+      "6.table",
+      `expected markdown table for multi-bodega output, got: ${text.slice(0, 160)}…`,
+    );
+  }
+  pass("6.route", `answered via ${calls.join(", ")} with markdown table`);
 });
 
 // ---- 7. anti-routing — per-bodega direct lookup -------------------------
