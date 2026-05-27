@@ -1,5 +1,5 @@
 import {
-  useLayoutEffect,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -28,7 +28,7 @@ export function Mascot({ homeRef }: Props) {
     by: number;
   } | null>(null);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const el = homeRef.current;
     if (!el) return;
     const update = () => setRect(el.getBoundingClientRect());
@@ -88,6 +88,7 @@ export function Mascot({ homeRef }: Props) {
   const isDragging = dragPos !== null;
   const left = dragPos ? dragPos.x : restPos.left;
   const top = dragPos ? dragPos.y : restPos.top;
+  const visible = rect !== null;
 
   return (
     <img
@@ -106,9 +107,10 @@ export function Mascot({ homeRef }: Props) {
         height: MASCOT,
         transition: isDragging
           ? "none"
-          : "left 320ms cubic-bezier(0.4, 1.4, 0.5, 1), top 320ms cubic-bezier(0.4, 1.4, 0.5, 1)",
+          : "left 320ms cubic-bezier(0.4, 1.4, 0.5, 1), top 320ms cubic-bezier(0.4, 1.4, 0.5, 1), opacity 180ms ease",
         touchAction: "none",
         zIndex: 20,
+        opacity: visible ? 1 : 0,
       }}
       className={`select-none drop-shadow-[0_4px_12px_rgba(244,114,182,0.25)] ${
         isDragging ? "cursor-grabbing" : "cursor-grab"
