@@ -117,6 +117,33 @@ export const resolutionRegressionScenarios: Scenario[] = [
   "Marca a 'Ferretería del Norte' como preferido para tornillos.",
 ];
 
+// Warehouse scenarios — multi-bodega flow, transfers, reorder, bulk init,
+// warehouse-aware analyses. Designed to be idempotent across reruns: the
+// "create bodega" turn surfaces a duplicate_name error on repeat runs and
+// the rest still runs.
+export const warehouseScenarios: Scenario[] = [
+  // Create a second bodega so subsequent scenarios can disambiguate.
+  "Crea una bodega llamada Bodega Sur con código SUR.",
+  // List bodegas — read-only catalog browse.
+  "Lista las bodegas.",
+  // Intake to a specific bodega: agent must call resolveWarehouse first.
+  "Ingresaron 30 tornillos de Ferretería del Norte a la bodega SUR a 12.50 cada uno.",
+  // Per-bodega stock lookup.
+  "¿Cuánto stock hay de IND-001 en SUR?",
+  // Aggregate + breakdown when SKU spans >1 bodega.
+  "¿Cómo está repartido IND-001 entre bodegas?",
+  // Atomic transfer — single HITL covers both legs.
+  ["Traslada 5 tornillos de la bodega principal a SUR.", "Dale."],
+  // Reorder point per (product, bodega).
+  "Establece el punto de reorden de IND-001 en SUR a 20.",
+  // Warehouse-ops analyses → must route to analyze.
+  "¿Qué le falta a SUR?",
+  "¿Qué se vende más en SUR?",
+  "¿Qué bodega está más cargada?",
+  // Cross-bodega availability question.
+  "Necesito 50 tornillos, ¿de qué bodega los saco?",
+];
+
 // Analysis sub-agent scenarios. The main agent must route these to the
 // `analyze` tool; the sub-agent returns a Spanish prose summary with numbers.
 // Negative cases (direct lookups) must NOT route to `analyze`.
@@ -143,5 +170,6 @@ export const allScenarios: Scenario[] = [
   ...supplierReadScenarios,
   ...resolutionRegressionScenarios,
   ...rejectionRegressionScenarios,
+  ...warehouseScenarios,
   ...analysisScenarios,
 ];
